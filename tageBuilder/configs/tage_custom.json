@@ -1,0 +1,43 @@
+{
+    "base": {
+        "isTaggedComp": false,
+        "hist_len":  0,
+        "ent_pred": 14,
+        "ent_hyst": 12,
+        "tag_width": null,
+        "id": 0
+    },
+    "t1": {
+        "isTaggedComp": true,
+        "hist_len":  4,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 7,
+        "id": 1
+    },
+    "t2": {
+        "isTaggedComp": true,
+        "hist_len":  6,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 7,
+        "id": 2
+    },
+    "t3": {
+        "isTaggedComp": true,
+        "hist_len":  10,
+        "ent_pred": 11, 
+        "ent_hyst": null,
+        "tag_width": 8,
+        "id": 3
+    },
+    "t4": {
+        "isTaggedComp": true,
+        "hist_len":  16,
+        "ent_pred": 11, 
+        "ent_hyst": null,
+        "tag_width": 8,
+        "id": 4
+    }
+    
+}
