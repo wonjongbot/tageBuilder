@@ -29,23 +29,24 @@ class CompressedHistory:
         self.orig_len = int(orig_len)
         self.comp_len = int(comp_len)
         self.offset = self.orig_len % self.comp_len
+        self.mask = (1 << self.comp_len) - 1
     def update(self, hist, idx):
 
         self.comp = (self.comp << 1) | int(hist[0])
         #self.comp ^= int(hist[idx + self.orig_len]) << self.offset
         self.comp ^= int(hist[self.orig_len]) << self.offset
         self.comp ^= (self.comp >> self.comp_len)
-        self.comp &= ((1 << self.comp_len) - 1)
+        self.comp &= self.mask
 
     def update2(self, buf, youngestIdx, oldestIdx):
-        youngest = buf.buf[(1 + buf.head + youngestIdx) % buf.bufsize]
-        oldest = buf.buf[(1 + buf.head + oldestIdx) % buf.bufsize]
+        youngest = buf.buf[(1 + buf.head + youngestIdx) & (buf.bufsize - 1)]
+        oldest = buf.buf[(1 + buf.head + oldestIdx) & (buf.bufsize - 1)]
         
         self.comp = (self.comp << 1) | int(youngest)
         #self.comp ^= int(hist[idx + self.orig_len]) << self.offset
         self.comp ^= int(oldest) << self.offset
         self.comp ^= (self.comp >> self.comp_len)
-        self.comp &= ((1 << self.comp_len) - 1)
+        self.comp &= self.mask
 
 class TAGEPredictor:
     def __init__(self):

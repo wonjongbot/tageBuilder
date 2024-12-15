@@ -1,8 +1,6 @@
 import struct
 import numpy as np 
-import cProfile
 import os
-
 class TraceReader:
     def __init__(self, filename):
         """
@@ -31,6 +29,8 @@ class TraceReader:
         self.instr_addr = None
         self.br_taken = None
 
+        # [(<instr_addr>, <br_taken>) ... ]
+        self.br_info_arr = []
     def read_stats(self):
         """
         Read total number of instructions from the first 4 bytes of the trace file
@@ -58,13 +58,25 @@ class TraceReader:
         self.stat_num_br+=1
         return 0
     
-    def read_branch_bulk(self):
+    def read_branch_batch(self, batch_size = 1024):
         """
-        Read branches in a block of 1024 branch instructions then return as list
+        Read branches in a block of (by default) 1024 branch instructions then return as list
 
         Returns:
             []: [str] on full/partial block, [] on empty block (EOF)
         """
+        self.br_info_arr = []
+        data = self.file.read(5*batch_size)
+        if data == b'':
+            print('REACHED EOF')
+            return -1
+        
+        self.stat_num_br += (len(data) // 5)
+        for i in range(len(data) // 5):
+            self.br_info_arr.append((struct.unpack('<I', data[5*i:5*i+4])[0], bool(data[5*i + 4])))
+            #print(self.br_info_arr[-1])
+        return 0
+
         
     
     def update_stats(self, outcome):
