@@ -55,7 +55,7 @@ class TAGEPredictor:
         self.rand_index = 0
         self.sizelog = ''
 
-        self.tables = {}
+        self.tables = []
         self.word_align = 18 # OPTIMIZATION: use middle of the PC to decrease aliasing
         self.branch_pc = 0
         self.base_idx_width = 14
@@ -68,8 +68,8 @@ class TAGEPredictor:
                                         (1, 1, True):  (1, 1),
                                         (1, 1, False): (1, 0) }
         self.id_gen = 1
-        self.comp_hist_idx = {}
-        self.comp_hist_tag = [{},{}]
+        self.comp_hist_idx = []
+        self.comp_hist_tag = [[],[]]
         self.phist = np.uint16(0)
         self.ghist_entries = 10
         self.ghist = CircularBuffer(self.ghist_entries, np.uint8)       
@@ -83,6 +83,7 @@ class TAGEPredictor:
 
         self.tagged_predictors = []
         self.id2name = [None]*32
+        self.name2id = {}
         self.use_alt_on_new_alloc = 0
 
         self.hitpred_id = 0
@@ -100,23 +101,36 @@ class TAGEPredictor:
         self.u_tick = 0
         self.u_tick_log = 19
 
+        self.base_pid = 0
+
     def init_tables(self, cfg):
         log = ''
         total_size = 0 # in Kibibits
+
+        max_id = max(value['id'] for value in cfg.values())
+        self.tables = [None] * (max_id + 1)
+        self.comp_hist_idx = [None] * (max_id + 1)
+        self.comp_hist_tag[0] = [None] * (max_id + 1)
+        self.comp_hist_tag[1] = [None] * (max_id + 1)
+
         for key, value in cfg.items():
             #print(key, value)
+            pid = value['id']
+            self.name2id[key] = pid
+            print(self.name2id)
             if key == 'base':
+                self.base_pid = pid
                 assert not value['isTaggedComp']
-                self.tables[key] = {}
-                self.tables[key]['pred'] = np.zeros(2**value['ent_pred'], dtype=np.uint8)
-                self.tables[key]['hyst'] = np.ones(2**value['ent_hyst'], dtype=np.uint8)
-                print(f"Initialized pred array of size {len(self.tables[key]['pred'])} and hyst array of size {len(self.tables[key]['hyst'])}")
-                self.tables[key]['predWidth'] = 1 # considers pred table and hyst table as one
-                self.tables[key]['hystWidth'] = 1
-                self.tables[key]['ent_pred'] = value['ent_pred']
-                self.tables[key]['ent_hyst'] = value['ent_hyst']
-                self.tables[key]['hist_len'] = value['hist_len']
-                self.tables[key]['id'] = value['id']
+                self.tables[pid] = {}
+                self.tables[pid]['pred'] = np.zeros(2**value['ent_pred'], dtype=np.uint8)
+                self.tables[pid]['hyst'] = np.ones(2**value['ent_hyst'], dtype=np.uint8)
+                print(f"Initialized pred array of size {len(self.tables[pid]['pred'])} and hyst array of size {len(self.tables[pid]['hyst'])}")
+                self.tables[pid]['predWidth'] = 1 # considers pred table and hyst table as one
+                self.tables[pid]['hystWidth'] = 1
+                self.tables[pid]['ent_pred'] = value['ent_pred']
+                self.tables[pid]['ent_hyst'] = value['ent_hyst']
+                self.tables[pid]['hist_len'] = value['hist_len']
+                self.tables[pid]['id'] = value['id']
                 self.id2name[value['id']] = key
 
                 table_size = (2**value['ent_pred'] + 2**value['ent_hyst']) / 2**10
@@ -131,7 +145,7 @@ class TAGEPredictor:
                 total_bits = pred_bits+tag_bits+u_bits
                 num_ent = 2**value['ent_pred']
 
-                self.tables[key] = {}
+                self.tables[pid] = {}
 
                 # Create Tags based on the actual branches so I can access dict to find 
                 #   useful bit and more
@@ -145,8 +159,8 @@ class TAGEPredictor:
                 
                 # initialized as weakly not taken
                 customdtype = np.dtype([('tag', np.uint16), ('pred', np.uint8), ('u', np.uint8)])
-                self.tables[key]['entries'] = np.zeros(num_ent, dtype=customdtype)
-                self.tables[key]['entries']['pred'][:] = 3
+                self.tables[pid]['entries'] = np.zeros(num_ent, dtype=customdtype)
+                self.tables[pid]['entries']['pred'][:] = 3
 
                 # NOTE PREVIOUS IMPLEMENTATION OF ENTRIES
                 #self.tables[key]['entries'] = [{'tag': np.uint16(0), 'pred': np.uint8(3), 'u':np.uint8(0)} for i in range(2**value['ent_pred'])]
@@ -155,24 +169,24 @@ class TAGEPredictor:
                 #self.tables[key]['pred'] = np.zeros(num_ent, dtype=np.uint8)
                 #self.tables[key]['tag'] = np.zeros(num_ent, dtype=np.uint32)
                 #self.tables[key]['u'] = np.zeros(num_ent, dtype=np.uint8)
-                self.tables[key]['tagWidth'] = tag_bits
-                self.tables[key]['predWidth'] = 3
-                self.tables[key]['isTaggedComp'] = True
-                self.tables[key]['ent_pred'] = value['ent_pred']
-                self.tables[key]['hist_len'] = value['hist_len']
-                self.tables[key]['id'] = value['id']
+                self.tables[pid]['tagWidth'] = tag_bits
+                self.tables[pid]['predWidth'] = 3
+                self.tables[pid]['isTaggedComp'] = True
+                self.tables[pid]['ent_pred'] = value['ent_pred']
+                self.tables[pid]['hist_len'] = value['hist_len']
+                self.tables[pid]['id'] = value['id']
                 self.tagged_predictors.append(key)
                 self.id2name[value['id']] = key
                 #self.id_gen += 1
-                self.ghist_len = self.tables[key]['hist_len'] if self.tables[key]['hist_len'] > self.ghist_len else self.ghist_len
+                self.ghist_len = self.tables[pid]['hist_len'] if self.tables[pid]['hist_len'] > self.ghist_len else self.ghist_len
 
-                self.comp_hist_idx[key] = CompressedHistory(value['hist_len'], value['ent_pred'])
-                self.comp_hist_tag[0][key] = CompressedHistory(value['hist_len'], tag_bits)
-                self.comp_hist_tag[1][key] = CompressedHistory(value['hist_len'], tag_bits - 1)
+                self.comp_hist_idx[pid] = CompressedHistory(value['hist_len'], value['ent_pred'])
+                self.comp_hist_tag[0][pid] = CompressedHistory(value['hist_len'], tag_bits)
+                self.comp_hist_tag[1][pid] = CompressedHistory(value['hist_len'], tag_bits - 1)
 
-                assert (total_bits == self.tables[key]['predWidth'] + self.tables[key]['tagWidth'] + 2)
+                assert (total_bits == self.tables[pid]['predWidth'] + self.tables[pid]['tagWidth'] + 2)
 
-                table_size = ((self.tables[key]['predWidth'] + self.tables[key]['tagWidth'] + 2) * (num_ent)) / 2**10
+                table_size = ((self.tables[pid]['predWidth'] + self.tables[pid]['tagWidth'] + 2) * (num_ent)) / 2**10
                 total_size += table_size
                 id = value['id']
                 log += f'id: {id} :: {key} =\t{table_size}Kb\n'
@@ -185,8 +199,9 @@ class TAGEPredictor:
     
     def mix_path_history(self, predictor_name, phist_size, phist):
         phist_c = int(phist & ((1 << phist_size) - 1))
-        size = int(self.tables[predictor_name]['ent_pred'])
-        bank = int(self.tables[predictor_name]['id'])
+        pid = self.name2id[predictor_name]
+        size = int(self.tables[pid]['ent_pred'])
+        bank = int(pid)
         A = phist_c
         A1 = A & ((1 << size) - 1)
         A2 = A >> size
@@ -200,22 +215,25 @@ class TAGEPredictor:
     
     def get_taggedComp_tag(self, predictor_name, bpc_hashed):
         #bpc_hashed = (branch_pc ^ (branch_pc >> 16))
-        tag = bpc_hashed ^ self.comp_hist_tag[0][predictor_name].comp ^ (self.comp_hist_tag[1][predictor_name].comp << 1)
-        return (tag & ((1 << self.tables[predictor_name]['tagWidth']) - 1))
+        pid = self.name2id[predictor_name]
+        tag = bpc_hashed ^ self.comp_hist_tag[0][pid].comp ^ (self.comp_hist_tag[1][pid].comp << 1)
+        pid = self.name2id[predictor_name]
+        return (tag & ((1 << self.tables[pid]['tagWidth']) - 1))
 
     def get_taggedComp_idx(self, predictor_name, bpc_hashed):
-        table = self.tables[predictor_name]
+        pid = self.name2id[predictor_name]
+        table = self.tables[pid]
         #bpc_hashed = (branch_pc ^ (branch_pc >> 16))
         hist_len = min(16, table['hist_len']) #16 if (self.tables[predictor_name]['hist_len'] > 16) else self.tables[predictor_name]['hist_len']
         
         foo = (bpc_hashed >> (abs(table['ent_pred'] - table['id']) + 1))
-        idx = bpc_hashed ^ foo ^ self.comp_hist_idx[predictor_name].comp ^ self.mix_path_history(predictor_name, hist_len, self.phist)
+        idx = bpc_hashed ^ foo ^ self.comp_hist_idx[pid].comp ^ self.mix_path_history(predictor_name, hist_len, self.phist)
 
         return (idx & ((1 << table['ent_pred'])-1))
 
     def predict_bimodal(self, branch_pc):
         idx_bimodal = (branch_pc >> self.word_align) & ((1<<self.base_idx_width) - 1)
-        pred_b = self.tables['base']['pred'][idx_bimodal]
+        pred_b = self.tables[self.base_pid]['pred'][idx_bimodal]
 
         self.bim_pred = bool(pred_b)
 
@@ -233,11 +251,11 @@ class TAGEPredictor:
         #    print(f'idx info { self.tage_idx}')
         #    print(f'tag info { self.tage_tag}')
 
+        pid = self.name2id[predictor_name]
+        idx = self.tage_idx[self.tables[pid]['id']]
+        tag = self.tage_tag[self.tables[pid]['id']]
 
-        idx = self.tage_idx[self.tables[predictor_name]['id']]
-        tag = self.tage_tag[self.tables[predictor_name]['id']]
-
-        value = self.tables[predictor_name]['entries'][idx]
+        value = self.tables[pid]['entries'][idx]
 
         #print(value, tag)
         if value["tag"] == np.uint16(tag):
@@ -273,8 +291,10 @@ class TAGEPredictor:
 
         for predictor_name in self.tagged_predictors:
             # update tag and idx for each predictor for current branch for update
-            self.tage_idx[self.tables[predictor_name]['id']] = self.get_taggedComp_idx(predictor_name, bpc_hashed)
-            self.tage_tag[self.tables[predictor_name]['id']] = self.get_taggedComp_tag(predictor_name, bpc_hashed)
+            #print(type(predictor_name))
+            pid = self.name2id[predictor_name]
+            self.tage_idx[pid] = self.get_taggedComp_idx(predictor_name, bpc_hashed)
+            self.tage_tag[pid] = self.get_taggedComp_tag(predictor_name, bpc_hashed)
         
         if settings.DEBUG == 1:
             print(f'idx info { self.tage_idx}')
@@ -284,17 +304,17 @@ class TAGEPredictor:
         for id in range(self.num_tagged, 0, -1):
             #print(id)
             #print(self.tables[self.id2name[id]]['entries'][self.tage_idx[id]]['tag'])
-            if self.tables[self.id2name[id]]['entries'][self.tage_idx[id]]['tag'] == self.tage_tag[id]:
+            if self.tables[id]['entries'][self.tage_idx[id]]['tag'] == self.tage_tag[id]:
                 if settings.DEBUG == 1:
                     print(f"TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
                 self.hitpred_id = id
-                self.hitpred_ctr = self.tables[self.id2name[id]]['entries'][self.tage_idx[id]]['pred']
+                self.hitpred_ctr = self.tables[id]['entries'][self.tage_idx[id]]['pred']
                 self.hitpred_taken = True if self.hitpred_ctr > 3 else False
                 break
         
         # Look for alternate hit
         for id in range(self.hitpred_id - 1, 0, -1):
-            entry = self.tables[self.id2name[id]]['entries'][self.tage_idx[id]]
+            entry = self.tables[id]['entries'][self.tage_idx[id]]
             if entry['tag'] == self.tage_tag[id]:
                 if settings.DEBUG == 1:
                     print(f"ALT TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
@@ -339,15 +359,15 @@ class TAGEPredictor:
 
     def update_bimodal(self, isTaken):
         idx_bimodal = (self.branch_pc >> self.word_align) & ((1<<self.base_idx_width) - 1)
-        pred_b = self.tables['base']['pred'][idx_bimodal]
+        pred_b = self.tables[self.base_pid]['pred'][idx_bimodal]
         #hyst_b = self.tables['base']['hyst'][idx_bimodal >> self.tables['base']['ent_hyst']]
-        hyst_b = self.tables['base']['hyst'][idx_bimodal >> 2]
+        hyst_b = self.tables[self.base_pid]['hyst'][idx_bimodal >> 2]
 
         (pred_b, hyst_b) = self.next_state_bimodal[(pred_b, hyst_b, isTaken)]
 
-        self.tables['base']['pred'][idx_bimodal] = pred_b
+        self.tables[self.base_pid]['pred'][idx_bimodal] = pred_b
         #self.tables['base']['hyst'][idx_bimodal >> self.tables['base']['ent_hyst']] = hyst_b
-        self.tables['base']['hyst'][idx_bimodal >> 2] = hyst_b
+        self.tables[self.base_pid]['hyst'][idx_bimodal >> 2] = hyst_b
 
 
     # TODO I NEED TO UPDATE FROM HIGHEST INDICIES TO LOWEST
@@ -379,17 +399,17 @@ class TAGEPredictor:
         return
     
     def update_tage_ctr(self, isTaken, id):
-        pred_name = self.id2name[id]
-        ctr = self.tables[pred_name]['entries'][self.tage_idx[id]]['pred']
+        #pred_name = self.id2name[id]
+        ctr = self.tables[id]['entries'][self.tage_idx[id]]['pred']
 
         if isTaken:
            if ctr < 7:
-               self.tables[pred_name]['entries'][self.tage_idx[id]]['pred'] += 1
+               self.tables[id]['entries'][self.tage_idx[id]]['pred'] += 1
         else:
             if ctr > 0:
-                self.tables[pred_name]['entries'][self.tage_idx[id]]['pred'] -= 1
+                self.tables[id]['entries'][self.tage_idx[id]]['pred'] -= 1
         if settings.DEBUG == 1:
-            foo = self.tables[pred_name]['entries'][self.tage_idx[id]]['pred']
+            foo = self.tables[id]['entries'][self.tage_idx[id]]['pred']
             print(f'ctr update: {ctr} ->  {foo}')
 
 
@@ -399,7 +419,7 @@ class TAGEPredictor:
 
         # if hitpred is not the base predictor
         if (self.hitpred_id > 0):
-            hitpred_name = self.id2name[self.hitpred_id]
+            #hitpred_name = self.id2name[self.hitpred_id]
             assert(self.hitpred_ctr >= 0)
             #assert(self.altpred_ctr >= 0)
 
@@ -432,9 +452,9 @@ class TAGEPredictor:
             min_u = 1
 
             for i in range(self.num_tagged, self.hitpred_id, -1):
-                predname = self.id2name[i]
-                if(self.tables[predname]['entries'][self.tage_idx[i]]['u'] < min_u):
-                    min_u = self.tables[predname]['entries'][self.tage_idx[i]]['u']
+                #predname = self.id2name[i]
+                if(self.tables[i]['entries'][self.tage_idx[i]]['u'] < min_u):
+                    min_u = self.tables[i]['entries'][self.tage_idx[i]]['u']
             
             # find entry to allocate (select among 3 tables with longer history)
             # Randomly select a bank among the next longer history tables
@@ -445,17 +465,17 @@ class TAGEPredictor:
             
             # allocate new entry if none available
             if min_u > 0:
-                self.tables[self.id2name[newentryId]]['entries'][self.tage_idx[newentryId]]['u'] = 0
+                self.tables[newentryId]['entries'][self.tage_idx[newentryId]]['u'] = 0
             
             for i in range(newentryId, self.num_tagged + 1):
                 #print(f'settings.DEBUG: {i} {newentryId}')
-                if (self.tables[self.id2name[i]]['entries'][self.tage_idx[i]]['u'] == 0):
-                    self.tables[self.id2name[i]]['entries'][self.tage_idx[i]]['tag'] = np.uint16(self.tage_tag[i])
-                    self.tables[self.id2name[i]]['entries'][self.tage_idx[i]]['pred'] = np.uint8(4) if (isTaken) else np.uint8(3)
-                    self.tables[self.id2name[i]]['entries'][self.tage_idx[i]]['u'] = np.uint8(0)
+                if (self.tables[i]['entries'][self.tage_idx[i]]['u'] == 0):
+                    self.tables[i]['entries'][self.tage_idx[i]]['tag'] = np.uint16(self.tage_tag[i])
+                    self.tables[i]['entries'][self.tage_idx[i]]['pred'] = np.uint8(4) if (isTaken) else np.uint8(3)
+                    self.tables[i]['entries'][self.tage_idx[i]]['u'] = np.uint8(0)
                     if settings.DEBUG == 1:
                         print(f'settings.DEBUG: {i} {newentryId}')
-                        foo = self.tables[self.id2name[i]]['entries'][self.tage_idx[i]]['tag']
+                        foo = self.tables[i]['entries'][self.tage_idx[i]]['tag']
                         print(f'ENTRY CREATED at ID {i}, TAG {foo}')
                     break
         ## ALLOCATE DONE
@@ -466,15 +486,15 @@ class TAGEPredictor:
             if settings.DEBUG == 1:
                 print('RESETTING UBIT')
             for i in range(1, self.num_tagged + 1):
-                for j in range(0, (1 << self.tables[self.id2name[i]]['ent_pred'])):
-                    self.tables[self.id2name[i]]['entries'][j]['u'] >> 1
+                for j in range(0, (1 << self.tables[i]['ent_pred'])):
+                    self.tables[i]['entries'][j]['u'] >> 1
         # RESET ubit done
 
         # TODO: UPDATE COUNTERS
         if self.hitpred_id > 0:
             ## update the hit counter
             self.update_tage_ctr(isTaken, self.hitpred_id)
-            if self.tables[self.id2name[self.hitpred_id]]['entries'][self.tage_idx[self.hitpred_id]]['u'] == 0:
+            if self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] == 0:
                 if self.altpred_id > 0:
                     self.update_tage_ctr(isTaken, self.altpred_id)
                 elif self.altpred_id == 0:
@@ -487,12 +507,12 @@ class TAGEPredictor:
         # TODO: UPDATE u counter
         if self.tage_pred != self.altpred_taken:
             if self.tage_pred == isTaken:
-                if self.tables[self.id2name[self.hitpred_id]]['entries'][self.tage_idx[self.hitpred_id]]['u'] < 3:
-                    self.tables[self.id2name[self.hitpred_id]]['entries'][self.tage_idx[self.hitpred_id]]['u'] += 1
+                if self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] < 3:
+                    self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] += 1
                 else:
                     if self.use_alt_on_new_alloc < 0:
-                        if (self.tables[self.id2name[self.hitpred_id]]['entries'][self.tage_idx[self.hitpred_id]]['u'] > 0):
-                            self.tables[self.id2name[self.hitpred_id]]['entries'][self.tage_idx[self.hitpred_id]]['u'] -= 1
+                        if (self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] > 0):
+                            self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] -= 1
 
 
         # update ghist and phist
@@ -501,16 +521,16 @@ class TAGEPredictor:
         
         # update compressed histories
         for i in range(1, self.num_tagged + 1):
-            name = self.id2name[i]
+            #name = self.id2name[i]
             
             #buf = self.ghist.getBuf(self.tables[name]['hist_len'] + 1)
             #self.comp_hist_idx[name].update(buf, self.ghist_ptr)
             #self.comp_hist_tag[0][name].update(buf, self.ghist_ptr)
             #self.comp_hist_tag[1][name].update(buf, self.ghist_ptr)
 
-            self.comp_hist_idx[name].update2(self.ghist, 0, self.tables[name]['hist_len'])
-            self.comp_hist_tag[0][name].update2(self.ghist, 0, self.tables[name]['hist_len'])
-            self.comp_hist_tag[1][name].update2(self.ghist, 0, self.tables[name]['hist_len'])
+            self.comp_hist_idx[i].update2(self.ghist, 0, self.tables[i]['hist_len'])
+            self.comp_hist_tag[0][i].update2(self.ghist, 0, self.tables[i]['hist_len'])
+            self.comp_hist_tag[1][i].update2(self.ghist, 0, self.tables[i]['hist_len'])
 
 
         return 
