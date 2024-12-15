@@ -198,14 +198,14 @@ class TAGEPredictor:
             print(f'F - {A}')
         return A
     
-    def get_taggedComp_tag(self, predictor_name, branch_pc):
-        bpc_hashed = (branch_pc ^ (branch_pc >> 16))
+    def get_taggedComp_tag(self, predictor_name, bpc_hashed):
+        #bpc_hashed = (branch_pc ^ (branch_pc >> 16))
         tag = bpc_hashed ^ self.comp_hist_tag[0][predictor_name].comp ^ (self.comp_hist_tag[1][predictor_name].comp << 1)
         return (tag & ((1 << self.tables[predictor_name]['tagWidth']) - 1))
 
-    def get_taggedComp_idx(self, predictor_name, branch_pc):
+    def get_taggedComp_idx(self, predictor_name, bpc_hashed):
         table = self.tables[predictor_name]
-        bpc_hashed = (branch_pc ^ (branch_pc >> 16))
+        #bpc_hashed = (branch_pc ^ (branch_pc >> 16))
         hist_len = min(16, table['hist_len']) #16 if (self.tables[predictor_name]['hist_len'] > 16) else self.tables[predictor_name]['hist_len']
         
         foo = (bpc_hashed >> (abs(table['ent_pred'] - table['id']) + 1))
@@ -268,10 +268,13 @@ class TAGEPredictor:
 
         #self.use_alt_on_new_alloc
 
+        # Fold branch PC to calculate tag and index
+        bpc_hashed = (self.branch_pc ^ (self.branch_pc >> 16))
+
         for predictor_name in self.tagged_predictors:
             # update tag and idx for each predictor for current branch for update
-            self.tage_idx[self.tables[predictor_name]['id']] = self.get_taggedComp_idx(predictor_name, self.branch_pc)
-            self.tage_tag[self.tables[predictor_name]['id']] = self.get_taggedComp_tag(predictor_name, self.branch_pc)
+            self.tage_idx[self.tables[predictor_name]['id']] = self.get_taggedComp_idx(predictor_name, bpc_hashed)
+            self.tage_tag[self.tables[predictor_name]['id']] = self.get_taggedComp_tag(predictor_name, bpc_hashed)
         
         if settings.DEBUG == 1:
             print(f'idx info { self.tage_idx}')
