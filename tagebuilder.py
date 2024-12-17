@@ -202,16 +202,28 @@ class TAGEPredictor:
         pid = self.name2id[predictor_name]
         size = int(self.tables[pid]['ent_pred'])
         bank = int(pid)
+        mask = (1 << size) - 1
+
         A = phist_c
-        A1 = A & ((1 << size) - 1)
+        A1 = A & mask
         A2 = A >> size
-        A2 = ((A2 << bank) & ((1 << size) - 1)) + (A2 >> abs(size - bank))
+        A2 = ((A2 << bank) & (mask)) + (A2 >> abs(size - bank))
         A = A1 ^ A2
-        A = ((A << bank) & ((1 << size) - 1)) + (A >> abs(size - bank))
+        A = ((A << bank) & (mask)) + (A >> abs(size - bank))
         
         if settings.DEBUG == 1:
             print(f'F - {A}')
         return A
+
+    def mix_path_history_simplified(self, predictor_name, phist_size, phist):
+        # Mask the path history to the given size
+        phist_c = phist & ((1 << phist_size) - 1)
+        
+        # Perform a single XOR with a predefined constant instead of multiple shifts
+        mixed = phist_c ^ (phist_c >> 2)  # Simplified mixing logic
+        
+        # Optional: Mask the result to limit its size
+        return int(mixed & ((1 << phist_size) - 1))
     
     def get_taggedComp_tag(self, predictor_name, bpc_hashed):
         #bpc_hashed = (branch_pc ^ (branch_pc >> 16))
@@ -227,7 +239,7 @@ class TAGEPredictor:
         hist_len = min(16, table['hist_len']) #16 if (self.tables[predictor_name]['hist_len'] > 16) else self.tables[predictor_name]['hist_len']
         
         foo = (bpc_hashed >> (abs(table['ent_pred'] - table['id']) + 1))
-        idx = bpc_hashed ^ foo ^ self.comp_hist_idx[pid].comp ^ self.mix_path_history(predictor_name, hist_len, self.phist)
+        idx = bpc_hashed ^ foo ^ self.comp_hist_idx[pid].comp ^ self.mix_path_history_simplified(predictor_name, hist_len, self.phist)
 
         return (idx & ((1 << table['ent_pred'])-1))
 
@@ -401,15 +413,16 @@ class TAGEPredictor:
     def update_tage_ctr(self, isTaken, id):
         #pred_name = self.id2name[id]
         ctr = self.tables[id]['entries'][self.tage_idx[id]]['pred']
+        entry = self.tables[id]['entries'][self.tage_idx[id]]
 
         if isTaken:
            if ctr < 7:
-               self.tables[id]['entries'][self.tage_idx[id]]['pred'] += 1
+               entry['pred'] += 1
         else:
             if ctr > 0:
-                self.tables[id]['entries'][self.tage_idx[id]]['pred'] -= 1
+                entry['pred'] -= 1
         if settings.DEBUG == 1:
-            foo = self.tables[id]['entries'][self.tage_idx[id]]['pred']
+            foo = entry['pred']
             print(f'ctr update: {ctr} ->  {foo}')
 
 
@@ -451,10 +464,14 @@ class TAGEPredictor:
         if (isNewAlloc):
             min_u = 1
 
-            for i in range(self.num_tagged, self.hitpred_id, -1):
-                #predname = self.id2name[i]
-                if(self.tables[i]['entries'][self.tage_idx[i]]['u'] < min_u):
-                    min_u = self.tables[i]['entries'][self.tage_idx[i]]['u']
+            # use numpy arr to vecterize finding min value
+            u_values = np.array([self.tables[i]['entries'][self.tage_idx[i]]['u'] for i in range(self.hitpred_id + 1, self.num_tagged + 1)])
+            min_u = np.min(u_values)
+
+            # for i in range(self.num_tagged, self.hitpred_id, -1):
+            #     #predname = self.id2name[i]
+            #     if(self.tables[i]['entries'][self.tage_idx[i]]['u'] < min_u):
+            #         min_u = self.tables[i]['entries'][self.tage_idx[i]]['u']
             
             # find entry to allocate (select among 3 tables with longer history)
             # Randomly select a bank among the next longer history tables
@@ -469,13 +486,14 @@ class TAGEPredictor:
             
             for i in range(newentryId, self.num_tagged + 1):
                 #print(f'settings.DEBUG: {i} {newentryId}')
-                if (self.tables[i]['entries'][self.tage_idx[i]]['u'] == 0):
-                    self.tables[i]['entries'][self.tage_idx[i]]['tag'] = np.uint16(self.tage_tag[i])
-                    self.tables[i]['entries'][self.tage_idx[i]]['pred'] = np.uint8(4) if (isTaken) else np.uint8(3)
-                    self.tables[i]['entries'][self.tage_idx[i]]['u'] = np.uint8(0)
+                entry = self.tables[i]['entries'][self.tage_idx[i]]
+                if (entry['u'] == 0):
+                    entry['tag'] = np.uint16(self.tage_tag[i])
+                    entry['pred'] = np.uint8(4) if (isTaken) else np.uint8(3)
+                    entry['u'] = np.uint8(0)
                     if settings.DEBUG == 1:
                         print(f'settings.DEBUG: {i} {newentryId}')
-                        foo = self.tables[i]['entries'][self.tage_idx[i]]['tag']
+                        foo = entry['tag']
                         print(f'ENTRY CREATED at ID {i}, TAG {foo}')
                     break
         ## ALLOCATE DONE
@@ -492,9 +510,10 @@ class TAGEPredictor:
 
         # TODO: UPDATE COUNTERS
         if self.hitpred_id > 0:
+            entry_update = self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]
             ## update the hit counter
             self.update_tage_ctr(isTaken, self.hitpred_id)
-            if self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] == 0:
+            if entry_update['u'] == 0:
                 if self.altpred_id > 0:
                     self.update_tage_ctr(isTaken, self.altpred_id)
                 elif self.altpred_id == 0:
@@ -507,12 +526,13 @@ class TAGEPredictor:
         # TODO: UPDATE u counter
         if self.tage_pred != self.altpred_taken:
             if self.tage_pred == isTaken:
-                if self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] < 3:
-                    self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] += 1
+                # entry_update = self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]
+                if entry_update['u'] < 3:
+                    entry_update['u'] += 1
                 else:
                     if self.use_alt_on_new_alloc < 0:
-                        if (self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] > 0):
-                            self.tables[self.hitpred_id]['entries'][self.tage_idx[self.hitpred_id]]['u'] -= 1
+                        if (entry_update['u'] > 0):
+                            entry_update['u'] -= 1
 
 
         # update ghist and phist
