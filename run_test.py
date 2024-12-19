@@ -111,7 +111,7 @@ if __name__ == "__main__":
         profiler = cProfile.Profile()
         profiler.enable()
         
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_l.json")
+        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_custom.json")
         
         profiler.disable()
 
@@ -123,24 +123,24 @@ if __name__ == "__main__":
         stats.print_stats()
     
 
-    settings.READ_BATCH = False
-    # Get the current time
-    current_time = datetime.now()
+    # settings.READ_BATCH = False
+    # # Get the current time
+    # current_time = datetime.now()
 
-    # Format the time as a string suitable for file names
-    file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
+    # # Format the time as a string suitable for file names
+    # file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
 
-    with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_NOBATCH.txt', 'w') as f:
-        profiler = cProfile.Profile()
-        profiler.enable()
+    # with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_NOBATCH.txt', 'w') as f:
+    #     profiler = cProfile.Profile()
+    #     profiler.enable()
         
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_l.json")
+    #     out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_custom.json")
         
-        profiler.disable()
+    #     profiler.disable()
 
-        f.write(out)
+    #     f.write(out)
 
-    with open(f"profile_results_{file_name_time}_NOBATCH.txt", "w") as f:
-        stats = pstats.Stats(profiler, stream=f)
-        stats.sort_stats("cumulative")  # Sort by cumulative time
-        stats.print_stats()
+    # with open(f"profile_results_{file_name_time}_NOBATCH.txt", "w") as f:
+    #     stats = pstats.Stats(profiler, stream=f)
+    #     stats.sort_stats("cumulative")  # Sort by cumulative time
+    #     stats.print_stats()
