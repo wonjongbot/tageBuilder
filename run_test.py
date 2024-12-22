@@ -17,13 +17,13 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     last_progress_time = current_time
     filelist = [
         ('DIST-FP-1', settings.TRACE_DIR + 'DIST-FP-1'),
-        # ('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
-        # ('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
-        # ('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
-        # ('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
-        # ('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
-        # ('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
-        # ('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
+        ('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
+        ('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
+        ('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
+        ('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
+        ('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
+        ('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
+        ('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
     ]
     with open(spec_name, 'r') as f:
         spec = json.load(f)
@@ -107,17 +107,19 @@ if __name__ == "__main__":
     # Format the time as a string suitable for file names
     file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
 
-    with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_BATCH.txt', 'w') as f:
+    configname = "tage_l"
+
+    with open(f'{settings.REPORT_DIR}_{configname}_{file_name_time}_BATCH.txt', 'w') as f:
         profiler = cProfile.Profile()
         profiler.enable()
         
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_custom.json")
+        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+configname+".json")
         
         profiler.disable()
 
         f.write(out)
 
-    with open(f"profile_results_{file_name_time}_BATCH.txt", "w") as f:
+    with open(f"profile_results_{configname}_{file_name_time}_BATCH.txt", "w") as f:
         stats = pstats.Stats(profiler, stream=f)
         stats.sort_stats("cumulative")  # Sort by cumulative time
         stats.print_stats()
