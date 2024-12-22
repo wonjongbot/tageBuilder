@@ -32,14 +32,14 @@ class CircularBuffer:
 
 # Compressed history class for tagged components with desired history length
 class CompressedHistory:
-    def __init__(self, orig_len, comp_len):
+    def __init__(self, orig_len:Optional[int], comp_len:Optional[int]):
         self.comp = 0
         self.orig_len = int(orig_len)
         self.comp_len = int(comp_len)
         self.offset = self.orig_len % self.comp_len
         self.mask = (1 << self.comp_len) - 1
 
-    def update2(self, buf, youngestIdx, oldestIdx):
+    def update2(self, buf:CircularBuffer, youngestIdx:int, oldestIdx:int):
         """
         update the compressed history -- history is folded when it reaches
         its max length 
@@ -124,7 +124,6 @@ class TAGEPredictor:
         for key, value in cfg.items():
             pid = value['id']
             self.name2id[key] = pid
-            print(self.name2id)
             if key == 'base':
                 self.base_pid = pid
                 assert not value['isTaggedComp']
@@ -190,6 +189,8 @@ class TAGEPredictor:
                 total_size += table_size
                 id = value['id']
                 log += f'id: {id} :: {key} =\t{table_size}Kb\n'
+        
+        print(self.name2id)
         
         self.tage_idx = [0] * (self.num_tagged + 1)
         self.tage_tag = [0] * (self.num_tagged + 1)
