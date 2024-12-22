@@ -1,6 +1,8 @@
 import struct
 import numpy as np 
 import os
+import logging
+
 class TraceReader:
     def __init__(self, filename):
         """
@@ -16,6 +18,10 @@ class TraceReader:
                 * instr_addr: instruction address
                 * br_taken: whether branch at given instr_addr is taken
         """
+
+        self.logger = logging.getLogger(f"{__name__}")
+        self.logger.info("Initializing TraceReader")
+
         self.filename = filename
         self.file = open(filename, 'rb')
         self.stat_num_instr = 0
@@ -68,7 +74,7 @@ class TraceReader:
         self.br_info_arr = []
         data = self.file.read(5*batch_size)
         if data == b'':
-            print('REACHED EOF')
+            self.logger.info("EOF detected")
             return -1
         
         self.stat_num_br += (len(data) // 5)

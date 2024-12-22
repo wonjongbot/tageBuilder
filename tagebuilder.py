@@ -3,6 +3,7 @@ import numpy as np
 import settings
 from typing import List, Optional, Dict, Tuple
 from numpy.typing import NDArray
+import logging
 
 # Basic circular buffer for global history register (GHR)
 class CircularBuffer:
@@ -55,6 +56,9 @@ class CompressedHistory:
 # TAGE predictor class with customizable parameters
 class TAGEPredictor:
     def __init__(self):
+        #self.logger = logging.getLogger(f"{__name__}")
+        #self.logger.info("Initializing TAGEPredictor")
+
         self.rng = np.random.default_rng()
         self.rand_array = self.rng.integers(low=0, high=3, size=10000)
         self.rand_index = 0
@@ -190,13 +194,13 @@ class TAGEPredictor:
                 id = value['id']
                 log += f'id: {id} :: {key} =\t{table_size}Kb\n'
         
-        print(self.name2id)
-        
+        #self.logger.info(self.name2id)
+
         self.tage_idx = [0] * (self.num_tagged + 1)
         self.tage_tag = [0] * (self.num_tagged + 1)
         
-        self.sizelog = f'{log}\nTotal Size: {total_size}Kb\nLongest history length: {self.ghist_len}\nnum tagged comp: {self.num_tagged}\n'
-        print(self.sizelog)
+        self.sizelog = f'\n{log}\nTotal Size: {total_size}Kb\nLongest history length: {self.ghist_len}\nnum tagged comp: {self.num_tagged}\n'
+        #self.logger.info(self.sizelog)
     
     def mix_path_history(self, predictor_name:str, phist_size:int, phist:np.uint16)->int:
         """
@@ -230,7 +234,7 @@ class TAGEPredictor:
         # Perform a single XOR with a predefined constant instead of multiple shifts
         mixed = phist_c ^ (phist_c >> 2)  # Simplified mixing logic
         
-        # Optional: Mask the result to limit its size
+        # Mask the result to limit its size
         return int(mixed & ((1 << phist_size) - 1))
     
     def get_taggedComp_tag(self, predictor_name:str, bpc_hashed:int)->int:
@@ -284,8 +288,7 @@ class TAGEPredictor:
             isHit = True
             pred = value["pred"]
         
-        if settings.DEBUG == 1:
-            print(f'value at {predictor_name}, {value}')
+        #self.logger.debug(f'value at {predictor_name}, {value}')
         
         return(isHit, pred)
 
@@ -295,8 +298,8 @@ class TAGEPredictor:
         """
         # BIMODAL PREDICTOR prediction
         self.predict_bimodal(self.branch_pc)
-        if settings.DEBUG == 1:
-            print(f'------------------------\nbpc: {(hex(self.branch_pc))}')
+        #self.logger.debug(f'------------------------')
+        #self.logger.debug(f'bpc: {(hex(self.branch_pc))}')
 
         self.hitpred_id = 0
         self.hitpred_ctr = None
@@ -315,16 +318,14 @@ class TAGEPredictor:
             self.tage_idx[pid] = self.get_taggedComp_idx(predictor_name, bpc_hashed)
             self.tage_tag[pid] = self.get_taggedComp_tag(predictor_name, bpc_hashed)
         
-        if settings.DEBUG == 1:
-            print(f'idx info { self.tage_idx}')
-            print(f'tag info { self.tage_tag}')
+        #self.logger.debug(f'idx info { self.tage_idx}')
+        #self.logger.debug(f'tag info { self.tage_tag}')
 
         # Look for main predictor hit
         for id in range(self.num_tagged, 0, -1):
             entry = self.tables[id]['entries'][self.tage_idx[id]]
             if entry['tag'] == self.tage_tag[id]:
-                if settings.DEBUG == 1:
-                    print(f"TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
+                #self.logger.debug(f"TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
                 self.hitpred_id = id
                 self.hitpred_ctr = entry['pred']
                 self.hitpred_taken = True if self.hitpred_ctr > 3 else False
@@ -334,14 +335,12 @@ class TAGEPredictor:
         for id in range(self.hitpred_id - 1, 0, -1):
             entry = self.tables[id]['entries'][self.tage_idx[id]]
             if entry['tag'] == self.tage_tag[id]:
-                if settings.DEBUG == 1:
-                    print(f"ALT TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
+                #self.logger.debug(f"ALT TAG MATCH FOUND ON predictor {id} :: idx {self.tage_idx[id]} : {self.tage_tag[id]}")
                 # only use alternate predictor value if use_alt ctr is positive and prediction is confident enough
                 # NOTE: Seznec's code has opposite logic for USE_ALT_ON_NA -- why?
                 if (self.use_alt_on_new_alloc >= 0) and (entry['pred'] not in (3, 4)):
                 #if (self.use_alt_on_new_alloc < 0) or (entry['pred'] not in (3, 4)):
-                    if settings.DEBUG == 1:
-                        print("Not using alt :: entry is not newalloc")
+                    #self.logger.debug("Not using alt :: entry is not newalloc")
                     self.altpred_id = id
                     self.altpred_ctr = entry['pred']
                     self.altpred_taken = True if self.altpred_ctr > 3 else False
@@ -350,23 +349,19 @@ class TAGEPredictor:
         if self.hitpred_id > 0:
             # if no altpred is found, altpred is bimodal predictor
             if self.altpred_id <= 0:
-                if settings.DEBUG == 1:
-                    print("ALTPRED IS BIMODAL")
+                #self.logger.debug("ALTPRED IS BIMODAL")
                 self.altpred_taken = self.bim_pred
 
             # Use main hit predictor if use_alt counter is negative or
             #    3-bit prediction ctr is weak (i.e. potential new allocation) 
             if (self.use_alt_on_new_alloc < 0) or (self.hitpred_ctr not in (3,4)):
-                if settings.DEBUG == 1:
-                    print("TAGEPRED is MAIN HIT PREDICTOR")
+                #self.logger.debug("TAGEPRED is MAIN HIT PREDICTOR")
                 self.tage_pred = True if self.hitpred_ctr > 3 else False
             else:
-                if settings.DEBUG == 1:
-                    print("TAGEPRED IS ALTPRED")
+                #self.logger.debug("TAGEPRED IS ALTPRED")
                 self.tage_pred = self.altpred_taken
         else:
-            if settings.DEBUG == 1:
-                print("NO HIT DETECTED. TAGE PRED == ALTPRED == BIMODAL")
+            #self.logger.debug("NO HIT DETECTED. TAGE PRED == ALTPRED == BIMODAL")
             self.altpred_taken = self.bim_pred
             self.tage_pred = self.altpred_taken
 
@@ -394,9 +389,8 @@ class TAGEPredictor:
         self.ghist_ptr = self.ghist.head
         self.ghist.updateBuf(np.uint8(isTaken))
 
-        if settings.DEBUG == 1:
-            print(f'ptr: {self.ghist_ptr}')
-            print(f'GHIST: {self.ghist.getBuf(16)}')
+        #self.logger.debug(f'ptr: {self.ghist_ptr}')
+        #self.logger.debug(f'GHIST: {self.ghist.getBuf(16)}')
     
     def update_phist(self, branch_pc:int):
         """
@@ -407,15 +401,14 @@ class TAGEPredictor:
         #phist = (int(self.phist) << 1) | ((branch_pc) & 1)
         self.phist = np.uint16(phist & ((1<<self.phist_len) - 1))
         
-        if settings.DEBUG == 1:
-            print(hex(branch_pc))
-            tmp = int(self.phist)
-            binstr = ''
-            for i in range(self.phist_len):
-                #print(f'???{tmp& 1}')
-                binstr = str(tmp&1) + binstr
-                tmp >>= 1
-            print(f'phist: 0b{binstr}')
+        # if self.logger.isEnabledFor(logging.DEBUG):
+            #self.logger.debug(hex(branch_pc))
+            #tmp = int(self.phist)
+            #binstr = ''
+            #for i in range(self.phist_len):
+                #binstr = str(tmp&1) + binstr
+                #tmp >>= 1
+            #self.logger.debug(f'phist: 0b{binstr}')
     
     def update_tage_ctr(self, isTaken:bool, id:int):
         """
@@ -430,9 +423,9 @@ class TAGEPredictor:
         else:
             if ctr > 0:
                 entry['pred'] -= 1
-        if settings.DEBUG == 1:
-            foo = entry['pred']
-            print(f'ctr update: {ctr} ->  {foo}')
+        # if self.logger.isEnabledFor(logging.DEBUG):
+            #foo = entry['pred']
+            #self.logger.debug(f'ctr update: {ctr} ->  {foo}')
 
 
     def update_tagged(self, isTaken:bool):
@@ -497,18 +490,17 @@ class TAGEPredictor:
                     entry['tag'] = np.uint16(self.tage_tag[i])
                     entry['pred'] = np.uint8(4) if (isTaken) else np.uint8(3)
                     entry['u'] = np.uint8(0)
-                    if settings.DEBUG == 1:
-                        print(f'settings.DEBUG: {i} {newentryId}')
-                        foo = entry['tag']
-                        print(f'ENTRY CREATED at ID {i}, TAG {foo}')
+                    # if self.logger.isEnabledFor(logging.DEBUG):
+                        #self.logger.debug(f'settings.DEBUG: {i} {newentryId}')
+                        #foo = entry['tag']
+                        #self.logger.debug(f'ENTRY CREATED at ID {i}, TAG {foo}')
                     break
         ## ALLOCATE DONE
         
         # RESET useful bit when tick is saturated 
         self.u_tick += 1
         if ((self.u_tick & ((1 << self.u_tick_log) - 1)) == 0):
-            if settings.DEBUG == 1:
-                print('RESETTING UBIT')
+            #self.logger.debug('RESETTING UBIT')
             for i in range(1, self.num_tagged + 1):
                 for j in range(0, (1 << self.tables[i]['ent_pred'])):
                     self.tables[i]['entries'][j]['u'] >> 1
@@ -562,8 +554,7 @@ class TAGEPredictor:
         self.rand = self.rand_array[self.rand_index]
         self.rand_index = (self.rand_index + 1) % len(self.rand_array)
 
-        if settings.DEBUG == 1:
-            print(f'RAND: {self.rand}\nISTAKEN: {isTaken}')
+        #self.logger.debug(f'RAND: {self.rand}\nISTAKEN: {isTaken}')
         self.update_tagged(isTaken)
 
         return 0

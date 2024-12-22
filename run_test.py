@@ -4,6 +4,7 @@ import tagebuilder
 import json
 import settings
 import time
+import logging
 
 import cProfile
 import pstats
@@ -107,9 +108,20 @@ if __name__ == "__main__":
     # Format the time as a string suitable for file names
     file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
 
-    configname = "tage_l"
+    configname = "bimodal"
 
-    with open(f'{settings.REPORT_DIR}_{configname}_{file_name_time}_BATCH.txt', 'w') as f:
+    # the root logger
+    logging.basicConfig(
+        level=logging.ERROR,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(f"tagebuilder_{configname}.log"),
+        ],
+    )
+    logging.disable()
+
+    with open(f'{settings.REPORT_DIR}{configname}_{file_name_time}_BATCH.txt', 'w') as f:
         profiler = cProfile.Profile()
         profiler.enable()
         
@@ -123,26 +135,3 @@ if __name__ == "__main__":
         stats = pstats.Stats(profiler, stream=f)
         stats.sort_stats("cumulative")  # Sort by cumulative time
         stats.print_stats()
-    
-
-    # settings.READ_BATCH = False
-    # # Get the current time
-    # current_time = datetime.now()
-
-    # # Format the time as a string suitable for file names
-    # file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
-
-    # with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_NOBATCH.txt', 'w') as f:
-    #     profiler = cProfile.Profile()
-    #     profiler.enable()
-        
-    #     out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_custom.json")
-        
-    #     profiler.disable()
-
-    #     f.write(out)
-
-    # with open(f"profile_results_{file_name_time}_NOBATCH.txt", "w") as f:
-    #     stats = pstats.Stats(profiler, stream=f)
-    #     stats.sort_stats("cumulative")  # Sort by cumulative time
-    #     stats.print_stats()
