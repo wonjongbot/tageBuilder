@@ -56,8 +56,8 @@ class CompressedHistory:
 # TAGE predictor class with customizable parameters
 class TAGEPredictor:
     def __init__(self):
-        #self.logger = logging.getLogger(f"{__name__}")
-        #self.logger.info("Initializing TAGEPredictor")
+        self.logger = logging.getLogger(f"{__name__}")
+        self.logger.info("Initializing TAGEPredictor")
 
         self.rng = np.random.default_rng()
         self.rand_array = self.rng.integers(low=0, high=3, size=10000)
@@ -134,7 +134,7 @@ class TAGEPredictor:
                 self.tables[pid] = {}
                 self.tables[pid]['pred'] = np.zeros(2**value['ent_pred'], dtype=np.uint8)
                 self.tables[pid]['hyst'] = np.ones(2**value['ent_hyst'], dtype=np.uint8)
-                print(f"Initialized pred array of size {len(self.tables[pid]['pred'])} and hyst array of size {len(self.tables[pid]['hyst'])}")
+                self.logger.info(f"Initialized pred array of size {len(self.tables[pid]['pred'])} and hyst array of size {len(self.tables[pid]['hyst'])}")
                 self.tables[pid]['predWidth'] = 1 # considers pred table and hyst table as one
                 self.tables[pid]['hystWidth'] = 1
                 self.tables[pid]['ent_pred'] = value['ent_pred']
@@ -194,13 +194,13 @@ class TAGEPredictor:
                 id = value['id']
                 log += f'id: {id} :: {key} =\t{table_size}Kb\n'
         
-        #self.logger.info(self.name2id)
+        self.logger.info(self.name2id)
 
         self.tage_idx = [0] * (self.num_tagged + 1)
         self.tage_tag = [0] * (self.num_tagged + 1)
         
         self.sizelog = f'\n{log}\nTotal Size: {total_size}Kb\nLongest history length: {self.ghist_len}\nnum tagged comp: {self.num_tagged}\n'
-        #self.logger.info(self.sizelog)
+        self.logger.info(self.sizelog)
     
     def mix_path_history(self, predictor_name:str, phist_size:int, phist:np.uint16)->int:
         """
@@ -220,8 +220,7 @@ class TAGEPredictor:
         A = A1 ^ A2
         A = ((A << bank) & (mask)) + (A >> abs(size - bank))
         
-        if settings.DEBUG == 1:
-            print(f'F - {A}')
+        #self.logger.debug(f'F - {A}')
         return A
 
     def mix_path_history_simplified(self, predictor_name, phist_size:int, phist:np.uint16)->int:

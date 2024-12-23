@@ -11,8 +11,27 @@ import pstats
 
 from datetime import datetime
 
+settings.READ_BATCH = True
+# Get the current time
+current_time = datetime.now()
+
+# Format the time as a string suitable for file names
+file_name_time = current_time.strftime("%Y_%m_%d__%H_%M_%S")
+
+configname = "bimodal"
+
+# the root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(f"tagebuilder_{configname}_{file_name_time}.log"),
+    ],
+)
 
 def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
+    mainlogger = logging.getLogger(f"{__name__}")
     out = ''
     current_time = time.time()
     last_progress_time = current_time
@@ -26,6 +45,9 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         ('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
         ('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
     ]
+
+    mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
+    
     with open(spec_name, 'r') as f:
         spec = json.load(f)
 
@@ -100,26 +122,6 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     return out
 
 if __name__ == "__main__":
-
-    settings.READ_BATCH = True
-    # Get the current time
-    current_time = datetime.now()
-
-    # Format the time as a string suitable for file names
-    file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
-
-    configname = "bimodal"
-
-    # the root logger
-    logging.basicConfig(
-        level=logging.ERROR,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(f"tagebuilder_{configname}.log"),
-        ],
-    )
-    logging.disable()
 
     with open(f'{settings.REPORT_DIR}{configname}_{file_name_time}_BATCH.txt', 'w') as f:
         profiler = cProfile.Profile()
