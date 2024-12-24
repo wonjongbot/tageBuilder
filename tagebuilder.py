@@ -4,6 +4,7 @@ import settings
 from typing import List, Optional, Dict, Tuple
 from numpy.typing import NDArray
 import logging
+import types
 
 # Basic circular buffer for global history register (GHR)
 class CircularBuffer:
@@ -53,6 +54,16 @@ class CompressedHistory:
         self.comp ^= (self.comp >> self.comp_len)
         self.comp &= self.mask
 
+# requried fields for config file
+REQUIRED_FIELDS = {
+    "id": int,
+    "isTaggedComp": bool,
+    "ent_pred": int,
+    "ent_hyst": int,  # Only for non-tagged tables
+    "hist_len": int,
+    "tag_width": int,  # Only for tagged tables
+}
+
 # TAGE predictor class with customizable parameters
 class TAGEPredictor:
     def __init__(self):
@@ -80,8 +91,8 @@ class TAGEPredictor:
         self.comp_hist_idx = []
         self.comp_hist_tag = [[],[]]
         self.phist = np.uint16(0)
-        self.ghist_entries = 10
-        self.ghist = CircularBuffer(self.ghist_entries, np.uint8)       
+        self.ghist_entries_log = 10
+        self.ghist = CircularBuffer(self.ghist_entries_log, np.uint8)       
         self.ghist_len = 0
         self.phist_len = 16
         self.ghist_ptr = -1
@@ -112,6 +123,28 @@ class TAGEPredictor:
 
         self.base_pid = 0
 
+        # dynamically assign method for mixing path history
+        if hasattr(settings, 'MIX_PATH_HISTORY_METHOD'):
+            self.logger.info("Custom mix_path_history method installed from settings.py")
+            self.mix_path_history = types.MethodType(settings.MIX_PATH_HISTORY_METHOD, self)
+        else:
+            self.logger.info("Using default mix_path_history method")
+        
+        # dynamically assign method for tag calculation
+        if hasattr(settings, 'TAG_CALC_METHOD'):
+            self.logger.info("Custom get_taggedComp_tag method installed from settings.py")
+            self.get_taggedComp_tag = types.MethodType(settings.TAG_CALC_METHOD, self)
+        else:
+            self.logger.info("Using default get_taggedComp_tag method")
+        
+        # dynamically assign method for index calculation
+        if hasattr(settings, 'IDX_CALC_METHOD'):
+            self.logger.info("Custom get_taggedComp_idx method installed from settings.py")
+            self.get_taggedComp_idx = types.MethodType(settings.IDX_CALC_METHOD, self)
+        else:
+            self.logger.info("Using default get_taggedComp_idx method")
+
+
     def init_tables(self, cfg:Dict):
         """
         declare and initialize predictor tables; calculate estimated memory footprint 
@@ -124,6 +157,22 @@ class TAGEPredictor:
         self.comp_hist_idx = [None] * (max_id + 1)
         self.comp_hist_tag[0] = [None] * (max_id + 1)
         self.comp_hist_tag[1] = [None] * (max_id + 1)
+
+        for name, fields in cfg.items():
+            for field, expected_type in REQUIRED_FIELDS.items():
+                # Skip irrelevant fields based on 'isTaggedComp'
+                if field == "ent_hyst" and fields.get("isTaggedComp"):
+                    continue
+                if field == "tag_width" and not fields.get("isTaggedComp"):
+                    continue
+
+                # Check if the field exists
+                if field not in fields:
+                    raise ValueError(f"'{field}' is required in configuration for {name}.")
+
+                # Check if the field has the correct type
+                if not isinstance(fields[field], expected_type):
+                    raise TypeError(f"Field '{field}' in config for {name} must be of type {expected_type.__name__}.")
 
         for key, value in cfg.items():
             pid = value['id']
@@ -204,28 +253,7 @@ class TAGEPredictor:
     
     def mix_path_history(self, predictor_name:str, phist_size:int, phist:np.uint16)->int:
         """
-        path history (history of a single bit from instruction address) hash generation
-        for tagged entry access
-        """
-        phist_c = int(phist & ((1 << phist_size) - 1))
-        pid = self.name2id[predictor_name]
-        size = int(self.tables[pid]['ent_pred'])
-        bank = int(pid)
-        mask = (1 << size) - 1
-
-        A = phist_c
-        A1 = A & mask
-        A2 = A >> size
-        A2 = ((A2 << bank) & (mask)) + (A2 >> abs(size - bank))
-        A = A1 ^ A2
-        A = ((A << bank) & (mask)) + (A >> abs(size - bank))
-        
-        #self.logger.debug(f'F - {A}')
-        return A
-
-    def mix_path_history_simplified(self, predictor_name, phist_size:int, phist:np.uint16)->int:
-        """
-        a simplified version of mix_path_history()
+        a simplified version of mix_path_history_adv()
         """
         # Mask the path history to the given size
         phist_c = phist & ((1 << phist_size) - 1)
@@ -242,7 +270,6 @@ class TAGEPredictor:
         """
         pid = self.name2id[predictor_name]
         tag = bpc_hashed ^ self.comp_hist_tag[0][pid].comp ^ (self.comp_hist_tag[1][pid].comp << 1)
-        pid = self.name2id[predictor_name]
         return (tag & ((1 << self.tables[pid]['tagWidth']) - 1))
 
     def get_taggedComp_idx(self, predictor_name:str, bpc_hashed:int)->int:
