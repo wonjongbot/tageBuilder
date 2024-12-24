@@ -16,9 +16,9 @@ settings.READ_BATCH = True
 current_time = datetime.now()
 
 # Format the time as a string suitable for file names
-file_name_time = current_time.strftime("%Y_%m_%d__%H_%M_%S")
+file_name_time = current_time.strftime("%Y_%m_%d-%H_%M_%S")
 
-configname = "bimodal"
+configname = settings.SPEC_NAME
 
 # the root logger
 logging.basicConfig(
@@ -37,13 +37,13 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     last_progress_time = current_time
     filelist = [
         ('DIST-FP-1', settings.TRACE_DIR + 'DIST-FP-1'),
-        ('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
-        ('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
-        ('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
-        ('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
-        ('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
-        ('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
-        ('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
+        #('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
+        #('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
+        #('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
+        #('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
+        #('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
+        #('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
+        #('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
     ]
 
     mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
@@ -123,7 +123,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
 
 if __name__ == "__main__":
 
-    with open(f'{settings.REPORT_DIR}{configname}_{file_name_time}_BATCH.txt', 'w') as f:
+    with open(f'{settings.REPORT_DIR}{configname}_{file_name_time}.txt', 'w') as f:
         profiler = cProfile.Profile()
         profiler.enable()
         
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
         f.write(out)
 
-    with open(f"profile_results_{configname}_{file_name_time}_BATCH.txt", "w") as f:
+    with open(f"{settings.REPORT_DIR}profiled/profile_results_{configname}_{file_name_time}.txt", "w") as f:
         stats = pstats.Stats(profiler, stream=f)
         stats.sort_stats("cumulative")  # Sort by cumulative time
         stats.print_stats()
