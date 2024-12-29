@@ -1,2 +1,4 @@
 __pycache__/*
+bin/__pycache__/*
+tagebuilder_core/__pycache__/*
 reports/*
