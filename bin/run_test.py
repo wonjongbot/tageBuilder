@@ -1,8 +1,9 @@
+from tagebuilder_core import treader
+from tagebuilder_core import tage_predictor
+from tagebuilder_core import settings
+
 import numpy as np
-import treader
-import tagebuilder
 import json
-import settings
 import time
 import logging
 
@@ -16,7 +17,7 @@ settings.READ_BATCH = True
 current_time = datetime.now()
 
 # Format the time as a string suitable for file names
-file_name_time = current_time.strftime("%Y_%m_%d-%H_%M_%S")
+file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
 
 configname = settings.SPEC_NAME
 
@@ -26,7 +27,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(f"tagebuilder_{configname}_{file_name_time}.log"),
+        logging.FileHandler(f"{settings.REPORT_DIR}/logger/logger_{configname}_{file_name_time}.log"),
     ],
 )
 
@@ -55,7 +56,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     sum_mispKPI = 0
     num_tests = len(filelist)
 
-    predictor = tagebuilder.TAGEPredictor()
+    predictor = tage_predictor.TAGEPredictor()
     predictor.init_tables(spec)
     out += predictor.sizelog
 
