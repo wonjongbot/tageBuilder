@@ -1,0 +1,106 @@
+{
+    "base": {
+        "isTaggedComp": false,
+        "hist_len":  0,
+        "ent_pred": 14,
+        "ent_hyst": 12,
+        "tag_width": null,
+        "id": 0
+    },
+    "t1": {
+        "isTaggedComp": true,
+        "hist_len":  8,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 8,
+        "id": 1
+    },
+    "t2": {
+        "isTaggedComp": true,
+        "hist_len":  12,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 9,
+        "id": 2
+    },
+    "t3": {
+        "isTaggedComp": true,
+        "hist_len":  18,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 9,
+        "id": 3
+    },
+    "t4": {
+        "isTaggedComp": true,
+        "hist_len":  27,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 10,
+        "id": 4
+    },
+    "t5": {
+        "isTaggedComp": true,
+        "hist_len":  40,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 10,
+        "id": 5
+    },
+    "t6": {
+        "isTaggedComp": true,
+        "hist_len":  60,
+        "ent_pred": 11, 
+        "ent_hyst": null,
+        "tag_width": 11,
+        "id": 6
+    },
+    "t7": {
+        "isTaggedComp": true,
+        "hist_len":  90,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 11,
+        "id": 7
+    },
+    "t8": {
+        "isTaggedComp": true,
+        "hist_len":  135,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 12,
+        "id": 8
+    },
+    "t9": {
+        "isTaggedComp": true,
+        "hist_len":  203,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 12,
+        "id": 9
+    },
+    "t10": {
+        "isTaggedComp": true,
+        "hist_len":  305,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 13,
+        "id": 10
+    },
+    "t11": {
+        "isTaggedComp": true,
+        "hist_len":  459,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 13,
+        "id": 11
+    },
+    "t12": {
+        "isTaggedComp": true,
+        "hist_len":  690,
+        "ent_pred": 10, 
+        "ent_hyst": null,
+        "tag_width": 14,
+        "id": 12
+    }
+}
