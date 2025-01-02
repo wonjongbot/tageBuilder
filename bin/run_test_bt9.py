@@ -1,11 +1,15 @@
+import yaml
 from tagebuilder_core import bt9reader
 from tagebuilder_core import tage_predictor
 from tagebuilder_core import settings
+from tagebuilder_core import tage_optimized
+from numba import njit
 
 import numpy as np
 import json
 import time
 import logging
+
 
 import cProfile
 import pstats
@@ -110,6 +114,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
             if result == -1:
                 print('INCOMPLETE FILE DETECTED')
                 break
+            #print(reader.br_infoArr)
             for b in reader.br_infoArr:
                 predictor.branch_pc = b['addr']
                 taken = bool(b['taken'])
@@ -134,19 +139,76 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         #print(out_f)
     return out
 
+def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
+    mainlogger = logging.getLogger(f"{__name__}")
+    out = ''
+    filelist = [
+        ('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz')
+    ]
+
+    mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
+    
+    with open(spec_name, 'r') as f:
+        spec = yaml.safe_load(f)
+
+    predictor = tage_optimized.TAGEPredictor(spec)
+
+    for bm in filelist:
+        print(f'TESTING {bm[0]}')
+        reader = bt9reader.BT9Reader(bm[1])
+        reader.init_tables()
+        while True:
+            current_time = time.time()
+            # read batch by default
+            b_size = 1000
+            result = reader.read_branch_batch(b_size)
+            if result == -1:
+                print('INCOMPLETE FILE DETECTED')
+                break
+            
+            #print(reader.br_infoArr)
+            results = tage_optimized.make_pred_n_update_batch(
+                reader.br_infoArr,
+                predictor.base_entries,
+                predictor.tagged_entries,
+                predictor.metadata[0]
+                )
+            
+            for i, r in enumerate(results):
+                reader.update_stats(bool(r))
+                reader.report['current_branch_instruction_count'] += 1
+                reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
+            
+            statHeartBeat(reader)
+            if result == 1:
+                #reader.report['current_branch_instruction_count'] += 1
+                reader.report['is_sim_over'] = True
+                break
+            
+        assert(reader.report['is_sim_over'])
+        
+        reader.finalize_stats()
+        out += 'REPORT\n'
+        for k,v in reader.report.items():
+            out += f'    {k}: {v}\n'
+        #print(out_f)
+    return out
+
 if __name__ == "__main__":
 
-    with open(f'{settings.REPORT_DIR}{configname}_{file_name_time}.txt', 'w') as f:
-        profiler = cProfile.Profile()
-        profiler.enable()
+    with open(f'{settings.REPORT_DIR}OPTIMIZED_{configname}_{file_name_time}.txt', 'w') as f:
+        #profiler = cProfile.Profile()
+        #profiler.enable()
         
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+configname+".json")
+        foo = 'bimodal'
+        out = main_optimized_tage(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".yaml")
+        #out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".json")
         
-        profiler.disable()
+        #profiler.disable()
 
         f.write(out)
 
-    with open(f"{settings.REPORT_DIR}profiled/profile_results_{configname}_{file_name_time}.txt", "w") as f:
-      stats = pstats.Stats(profiler, stream=f)
-      stats.sort_stats("cumulative")  # Sort by cumulative time
-      stats.print_stats()
+    #with open(f"{settings.REPORT_DIR}profiled/OPTIMIZED_profile_results_{configname}_{file_name_time}.txt", "w") as f:
+    #  stats = pstats.Stats(profiler, stream=f)
+    #  stats.sort_stats("cumulative")  # Sort by cumulative time
+    #  stats.print_stats()

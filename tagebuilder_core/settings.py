@@ -9,7 +9,7 @@ SPEC_DIR = "/home/wonjongbot/tageBuilder/configs/"
 
 READ_BATCH = True
 
-SPEC_NAME = "tage_sc_l"
+SPEC_NAME = "bimodal"
 
 MIX_PATH_HISTORY_METHOD = custom_algo.mix_path_history_adv
 

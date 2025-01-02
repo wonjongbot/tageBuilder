@@ -1,0 +1,11 @@
+global_config:
+    foo: true
+    phist_len: 16
+    u_duration_log: 19
+tables:
+    - name: base
+      isBase: true
+      hist_len: 0
+      num_pred_entries_log: 14
+      num_hyst_entries_log: 12
+      tag_width: 0
