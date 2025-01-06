@@ -169,9 +169,21 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
             #print(reader.br_infoArr)
             results = tage_optimized.make_pred_n_update_batch(
                 reader.br_infoArr,
+                predictor.num_tables,
                 predictor.base_entries,
                 predictor.tagged_entries,
-                predictor.metadata[0]
+                predictor.tagged_offsets, #tagged_offsets
+                predictor.tagged_idxs,
+                predictor.tagged_tags,
+                predictor.tagged_num_entries_log,
+                predictor.hist_len_arr, #hist_len_arr
+                predictor.comp_hist_idx_arr, #comp_hist_idx_arr
+                predictor.comp_hist_tag0_arr, #comp_hist_tag0_arr
+                predictor.comp_hist_tag1_arr, #comp_hist_tag1_arr
+                predictor.tagged_tag_widths, #tagged_tag_widths
+                predictor.phist, #phist
+                predictor.use_alt_on_new_alloc, #use_alt_on_new_alloc
+                predictor.metadata[0] #metadata
                 )
             
             for i, r in enumerate(results):
@@ -200,7 +212,7 @@ if __name__ == "__main__":
         #profiler = cProfile.Profile()
         #profiler.enable()
         
-        foo = 'bimodal'
+        foo = 'tage_sc_l'
         out = main_optimized_tage(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".yaml")
         #out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".json")
         
