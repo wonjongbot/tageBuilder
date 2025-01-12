@@ -7,21 +7,108 @@ from numba import njit
 ### SECTINO: GLOBALS
 metadtype = np.dtype([
     ('base_idx_mask', np.uint32),
-    ('base_pred_hyst_diff_log', np.uint32)
+    ('base_pred_hyst_diff_log', np.uint32),
+    ('phist', np.uint32),
+    ('phist_len', np.uint32),
+    ('use_alt_on_new_alloc', np.int8),
+    ('u_tick', np.uint32),
+    ('u_tick_log', np.uint32),
+    ('ghist_head', np.uint32),
+    ('ghist_ptr', np.uint32),
+    ('ghist_size_log', np.uint32),
+    ('rand', np.uint32)
     ])
 ### GLOBAL DONE
+
+### SECTION: HISTORY OPERATIONS
+@njit(inline='always')
+def ghist_print(buf, meta, length = 64):
+        """
+        return a np array with 0th element being head and <length - 1>th
+        entry being last element of the array
+        """
+        head = meta['ghist_head']
+        idxs = (head + 1 + np.arange(length)) & ((1 << meta['ghist_size_log']) - 1)
+        
+        o = ''
+        for it in idxs:
+            o += str(buf[it])
+        print(o)
+
+@njit(inline='always')
+def ghist_update(buf, val, meta):
+    head = meta['ghist_head']
+    # insert new history value to head (next available spot in cyclic buffer)
+    buf[head] = val
+    # update ptr (most current value) position
+    meta['ghist_ptr'] = head
+    # update head position
+    meta['ghist_head'] = (head - 1) & ((1 << meta['ghist_size_log']) - 1)
+    #print(meta['ghist_head'], 1 << meta['ghist_size_log'] - 1)
+
+@njit(inline='always')
+def phist_update(bpc, meta):
+    phist = meta['phist'] << 1 | (bpc & 1)
+    meta['phist'] = phist & ((1 << meta['phist_len']) - 1)
+### HISTORY OPERATIONS
+
+### SECTION: COMPRESSED HISTORY
+"""
+cyclic shift register to compress long global history into
+shorter one for table indexing and tagging.
+"""
+comp_hist_dtype = np.dtype([
+    ('comp', np.uint32),
+    ('orig_len', np.uint32),
+    ('comp_len', np.uint32),
+    ('offset', np.uint32),
+    ('mask', np.uint32)
+    ])
+
+# TODO: strongly typed funciton for comp_hist
+@njit(inline='always')
+def comp_hist_init(comp_hist, orig_len:np.uint32, comp_len:np.uint32):
+    comp_hist['comp'] = 0
+    comp_hist['orig_len'] = orig_len
+    comp_hist['comp_len'] = comp_len
+    comp_hist['offset'] = orig_len % comp_len
+    #print(comp_len)
+    comp_hist['mask'] = (1 << comp_len) -1
+
+@njit(inline='always')
+def comp_hist_update(comp_hist, youngest, oldest):
+    comp = (int(comp_hist['comp']) << 1 ) | youngest
+    comp ^= (oldest << comp_hist['offset'])
+    comp ^= (comp >> comp_hist['comp_len'])
+    comp &= comp_hist['mask']
+
+    comp_hist['comp'] = comp
+### COMPRESSED HISTORY DONE
+
 
 ### SECTION: CORE LOGIC
 @njit(inline='always')
 def mix_path_history(
     len,
-    phist      
+    phist,
+    pid,
+    t_num_entries_log
     ):
+    """
+    replicates the `F` function in seznec's code
+    """
+    
     phist_masked = phist & ((1 << len) - 1)
+    mask = (1 << t_num_entries_log) - 1
 
-    mixed = phist_masked ^ (phist >> 2)
+    A1 = phist_masked & mask
+    A2 = phist_masked >> t_num_entries_log
+    A2 = ((A2 << pid) & mask) + (A2 >> (t_num_entries_log - pid))
+
+    phist_masked = A1^A2
+    phist_masked = ((phist_masked << pid) & mask) + (phist_masked >> (t_num_entries_log - pid))
                             
-    return np.uint32(mixed & ((1 << len) - 1))
+    return np.uint32(phist_masked)
 
 @njit(inline='always')
 def get_tagged_idx(
@@ -35,7 +122,7 @@ def get_tagged_idx(
     t_hist_len = min(16, t_hist_len)
     mask = (1 << t_num_entries_log) - 1
     foo = (bpc >> int(abs(int(t_num_entries_log) - pid) + 1))
-    return (bpc ^ foo ^ t_comp_hist_idx ^ mix_path_history(t_hist_len, phist)) & mask
+    return (bpc ^ foo ^ t_comp_hist_idx ^ mix_path_history(t_hist_len, phist,pid, t_num_entries_log)) & mask
 
 @njit(inline='always')
 def get_tagged_tag(
@@ -64,7 +151,7 @@ def get_prediction(
     t_comp_hist_tag0,
     t_comp_hist_tag1,
     t_tag_width,
-    phist,
+    #phist,
     metadata
     ): # returns NUMPY ARR
     """
@@ -77,6 +164,7 @@ def get_prediction(
         return np.array([np.int8((b_entries[idx_bim] >> 1) & 0b1), np.int8(1), b_entries[idx_bim]], dtype=np.int8)
     # tage prediction (single predictor)
     else:
+        phist = metadata['phist']
         t_idx = get_tagged_idx(
             pid,
             bpc,
@@ -98,17 +186,27 @@ def get_prediction(
         # NOTE: is it possible to somehow notify parent function
         #       so that we don't have to predict from unecessary ones?
         if e['tag'] == t_tag:
-            return np.array([np.int8(e['pred_ctr'] >> 2), np.int8(1), e['pred_ctr']], dtype=np.int8)
+            return np.array([np.int8(e['pred_ctr'] >= 0), np.int8(1), e['pred_ctr']], dtype=np.int8)
         else:
             return np.array([np.int8(0), np.int8(0), np.int8(-1)], dtype=np.int8)
 
 @njit(inline='always')
-def update_predictor(
+def update_base_predictor(
     branch_pc,
     branch_taken,
-    predictor_id,
+    # predictor_id,
     base_entries,
-    tagged_entries,
+    # tagged_entries,
+    # pred_results,
+    # main_pred_id,
+    # alt_pred_id,
+    # t_idxs,
+    # t_tags,
+    # ghist,
+    # phist,
+    # comp_hist_idx_arr,
+    # comp_hist_tag0_arr,
+    # comp_hist_tag1_arr,
     metadata
     ):
     # base predictor update
@@ -133,6 +231,15 @@ def update_predictor(
     return 0
 
 @njit(inline='always')
+def update_tagged_ctr(branch_taken, tagged_entry):
+    oldval = tagged_entry['pred_ctr']
+    if branch_taken:
+        tagged_entry['pred_ctr'] = min(oldval+1, 3)
+    else:
+        tagged_entry['pred_ctr'] = max(oldval-1, -4)
+
+
+@njit(inline='always')
 def make_pred_n_update_batch(
     br_infos,
     num_tables,
@@ -147,9 +254,11 @@ def make_pred_n_update_batch(
     comp_hist_tag0_arr,
     comp_hist_tag1_arr,
     tagged_tag_widths,
-    phist,
-    use_alt_on_new_alloc,
-    metadata
+    ghist,
+    #phist,
+    #use_alt_on_new_alloc,
+    metadata,
+    rand_array
     ):
     #predictor_id = 0
     results = np.zeros(len(br_infos), dtype=np.uint8)
@@ -172,7 +281,7 @@ def make_pred_n_update_batch(
                 comp_hist_tag0_arr[predictor_id],
                 comp_hist_tag1_arr[predictor_id],
                 tagged_tag_widths[predictor_id],
-                phist,
+                #phist,
                 metadata
             )
             #print(predictions)
@@ -201,27 +310,140 @@ def make_pred_n_update_batch(
             alt_pred_id = None
             main_pred = None
             alt_pred = None
+            assert(False)
 
+        # if None in (main_pred_id, alt_pred_id, main_pred, alt_pred):
+        #     assert(False)
         # CHANGE RETURN VALUE SO IT GIVES COUNTER ITSELF??
         if main_pred_id > 0:
-            if (use_alt_on_new_alloc < 0) or (predictions[int(main_pred_id), 2] not in (3,4)):
+            if (metadata['use_alt_on_new_alloc'] < 0) or (predictions[int(main_pred_id), 2] not in (3,4)):
                 final_pred = main_pred
+                #final_pred_id = main_pred_id
             else:
                 final_pred = alt_pred
+                #final_pred_id = alt_pred_id
         else:
             final_pred = alt_pred
+            #final_pred_id = alt_pred_id
 
         #print(pred, b['taken'])
+        
+        # DEBUG
+        # print('table id used:',main_pred_id)
         results[i] = np.uint8(final_pred == b['taken'])
-        #print(results[i])
-        update_predictor(
-            b['addr'],
-            b['taken'],
-            predictor_id,
-            base_entries,
-            tagged_entries,
-            metadata
-        )
+
+        # UPDATE PREDICTORS
+
+        rand_val = rand_array[metadata['rand']]
+        metadata['rand'] = (metadata['rand'] + 1) % 10000
+        #if (main_pred_id == num_tables - 1):
+        #    print("using largest ghist for id", main_pred_id)
+        is_new_alloc = (not results[i]) and (main_pred_id < num_tables - 1)
+        
+        # Allocate new table entry for update
+        if main_pred_id > 0:
+            # update weak results
+            pseudo_new_alloc = predictions[int(main_pred_id), 2] in (-1,0) 
+            if pseudo_new_alloc:
+                if main_pred == b['taken']:
+                    is_new_alloc = False
+                if main_pred != alt_pred:
+                    if alt_pred == b['taken']:
+                        if metadata['use_alt_on_new_alloc'] < 7:
+                            metadata['use_alt_on_new_alloc'] += 1
+                    elif metadata['use_alt_on_new_alloc'] > -8:
+                        metadata['use_alt_on_new_alloc'] -= 1
+                if metadata['use_alt_on_new_alloc'] >= 0:
+                    # set final pred to main predictor for useful bit update
+                    final_pred = main_pred
+        if is_new_alloc:
+            min_u = 1
+            u_values = np.array([
+                tagged_entries[tagged_offsets[j]+tagged_idxs[j]]['u'] for j in range(main_pred_id+1, num_tables)
+                ])
+            min_u = np.min(u_values)
+
+            # find entry to allocate
+            num_table_avail = num_tables - 1 - main_pred_id
+            num_table_avail = min(3, num_table_avail)
+            random_offset = rand_val % num_table_avail
+            new_entry_id  = main_pred_id + 1 + random_offset
+
+            # clear out existing entry if none availble
+            if min_u > 0:
+                tagged_entries[tagged_offsets[new_entry_id]+tagged_idxs[new_entry_id]]['u'] = np.uint8(0)
+            
+            for j in range(new_entry_id, num_tables): #NOTE: fix math?
+                entry = tagged_entries[tagged_offsets[j]+tagged_idxs[j]]
+                if entry['u'] == 0:
+                    entry['tag'] = tagged_tags[j]
+                    entry['pred_ctr'] = np.int8(0) if b['taken'] else np.int8(-1)
+                    # entry['u'] = np.uint8(0) # redundent 
+                    # DEBUG
+                    # print('entry to be inserted', j, entry)
+                    break
+        # Allocate done
+        
+        # reset useful bit upon saturation NOTE: ANY WAY TO OPTIMIZE THIS??
+        metadata['u_tick'] += 1
+        if (metadata['u_tick'] & ((1 << metadata['u_tick_log']) - 1)) == 0:
+            for j in range(tagged_entries.shape[0]):
+                tagged_entries[j]['u'] = tagged_entries[j]['u'] >> 1
+        # reset ubit done
+
+        # Update ctrs
+        #entry_new = None
+        #print(main_pred_id)
+        if main_pred_id > 0:
+            offset = tagged_offsets[main_pred_id]
+            idx = tagged_idxs[main_pred_id]
+            entry_new = tagged_entries[offset + idx]
+            update_tagged_ctr(b['taken'], entry_new)
+            
+            if entry_new['u'] == 0:
+                if alt_pred_id > 0:
+                    alt_entry = tagged_entries[tagged_offsets[alt_pred_id]+tagged_idxs[alt_pred_id]]
+                    update_tagged_ctr(b['taken'], alt_entry)
+                elif alt_pred_id == 0:
+                    #assert(alt_pred_id == 0)
+                    update_base_predictor(
+                        b['addr'], b['taken'],
+                        base_entries, metadata
+                    )
+        else:
+            update_base_predictor(
+                b['addr'], b['taken'],
+                base_entries, metadata
+            )
+        # update usefulness
+        if final_pred != alt_pred:
+            if final_pred == b['taken']:
+                entry_new['u'] = min(int(entry_new['u']) + 1, 3)
+                #print(entry_new['u'])
+            else:
+                if metadata['use_alt_on_new_alloc'] < 0:
+                    entry_new['u'] = max(int(entry_new['u']) - 1, 0)
+        
+        # update ghist and phist
+        #print(b['taken'], ghist)
+        ghist_update(ghist, b['taken'], metadata)
+        #print('BRANCH:', b['taken'])
+        #ghist_print(ghist,metadata,64)
+        #print()
+        phist_update(b['addr'], metadata)
+
+        # update compressed histories
+        ghist_mask = (1 << metadata['ghist_size_log']) - 1
+        for id in range(1, num_tables):
+            oldestIdx = hist_len_arr[id]
+            youngest_val = ghist[(1 + metadata['ghist_head']) & ghist_mask]
+            oldest_val = ghist[(1 + metadata['ghist_head'] + oldestIdx) & ghist_mask]
+
+            comp_hist_update(comp_hist_idx_arr[id], youngest_val, oldest_val)
+            comp_hist_update(comp_hist_tag0_arr[id], youngest_val, oldest_val)
+            comp_hist_update(comp_hist_tag1_arr[id], youngest_val, oldest_val)
+
+    
     #print(results)
     return results
 
@@ -239,33 +461,6 @@ tagged_entry_dtype = np.dtype([
     ('u', np.uint8)
     ]) 
 ### TAGGED PREDICTOR DONE
-
-### SECTION: COMPRESSED HISTORY
-"""
-cyclic shift register to compress long global history into
-shorter one for table indexing and tagging.
-"""
-comp_hist_dtype = np.dtype([
-    ('comp', np.uint32),
-    ('orig_len', np.uint32),
-    ('comp_len', np.uint32),
-    ('offset', np.uint32),
-    ('mask', np.uint32)
-    ])
-
-# TODO: strongly typed funciton for comp_hist
-@njit
-def comp_hist_init(comp_hist, orig_len:np.uint32, comp_len:np.uint32):
-    comp_hist['comp'] = 0
-    comp_hist['orig_len'] = orig_len
-    comp_hist['comp_len'] = comp_len
-    comp_hist['offset'] = orig_len % comp_len
-    print(comp_len)
-    comp_hist['mask'] = (1 << comp_len) -1
-
-def comp_hist_update(comp_hist):
-    pass
-### COMPRESSED HISTORY DONE
 
 
 ### SECTION: UTILITIES
@@ -286,13 +481,15 @@ core logics are moved to function for optimization purposes
 class TAGEPredictor:
     def __init__(self, spec):
         self.storage_report = {}
-        self.phist_len = spec['global_config']['phist_len']
-        self.u_duration_log = spec['global_config']['u_duration_log']
 
         self.num_tables = len(spec['tables'])
         self.num_tot_tagged_entries = 0
         self.id2name = []
         self.max_hist_len = np.uint32(0)
+
+        # randoms
+        self.rng = np.random.default_rng()
+        self.rand_array = self.rng.integers(low=0, high=3, size=10000)
 
         # DEPRECATED NOTE: consider combining these lists into a single large buffer
         # self.pred_ctr_list = numba.typed.List()
@@ -320,7 +517,7 @@ class TAGEPredictor:
         self.comp_hist_tag0_arr = np.zeros(self.num_tables, dtype = comp_hist_dtype)
         self.comp_hist_tag1_arr = np.zeros(self.num_tables, dtype = comp_hist_dtype)
 
-        self.use_alt_on_new_alloc = np.int8(0)
+        #self.use_alt_on_new_alloc = np.int8(0)
         self.metadata = np.zeros(1, dtype=metadtype)
 
         for id, table in enumerate(spec['tables']):
@@ -359,9 +556,14 @@ class TAGEPredictor:
         self.max_hist_len = max(self.hist_len_arr)
 
         # TODO: Add seperate history registers for system calls
-        self.ghist_bufsize = 2**10
+        ghist_size_log = 10
+        self.ghist_bufsize = 2**ghist_size_log
         self.ghist = np.zeros(self.ghist_bufsize ,dtype = np.uint8)
-        self.phist = np.uint32(0)
+
+        #self.phist = np.uint32(0)
+        self.metadata[0]['ghist_size_log'] = ghist_size_log
+        self.metadata[0]['phist_len'] = spec['global_config']['phist_len']
+        self.metadata[0]['u_tick_log'] = spec['global_config']['u_duration_log']
 
         print(f'hist_len_arr:\n    {self.hist_len_arr}')
         print(f'comp_hist_idx:\n    {self.comp_hist_idx_arr}')
@@ -374,7 +576,7 @@ class TAGEPredictor:
 
         # Size calculation:
         self.storage_report['ghist_size_b'] = self.max_hist_len
-        self.storage_report['phist_size_b'] = self.phist_len
+        self.storage_report['phist_size_b'] = self.metadata['phist_len']
         self.storage_report['use_alt_on_new_alloc'] = 4
         self.storage_report['base_size_pred_b'] = 2**self.base_num_pred_entries_log
         self.storage_report['base_size_hyst_b'] = 2**self.base_num_hyst_entries_log
@@ -383,7 +585,7 @@ class TAGEPredictor:
                 self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(self.tagged_offsets[id + 1] - self.tagged_offsets[id])
             else:
                 self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(len(self.tagged_entries) - self.tagged_offsets[id])
-        self.storage_report['tot_size_Kb'] = (sum(self.storage_report.values())) / 1024# / 8192
+        self.storage_report['tot_size_Kb'] = ((sum(self.storage_report.values())) / 1024)[0]# / 8192
         
         print("storage_info:")
         for k,v in self.storage_report.items():
@@ -393,31 +595,31 @@ class TAGEPredictor:
 
 
 
-if __name__ == "__main__":
-    spec = None
-    spec_src = "/home/wonjongbot/tageBuilder/configs/tage_l.yaml"
-    with open(spec_src, "r") as f:
-        spec = yaml.safe_load(f)
+# if __name__ == "__main__":
+#     spec = None
+#     spec_src = "/home/wonjongbot/tageBuilder/configs/tage_l.yaml"
+#     with open(spec_src, "r") as f:
+#         spec = yaml.safe_load(f)
     
-    for k,v in spec.items():
-        print(f'{k}')
-        if k == 'global_config':
-            for k1, v1 in v.items():
-                print(f'    {k1}: {v1}')
-        if k == 'tables':
-            for i, t in enumerate(v):
-                print(f'    id: {i}')
-                for k1, v1 in t.items():
-                    print(f'        {k1}: {v1}')
+#     for k,v in spec.items():
+#         print(f'{k}')
+#         if k == 'global_config':
+#             for k1, v1 in v.items():
+#                 print(f'    {k1}: {v1}')
+#         if k == 'tables':
+#             for i, t in enumerate(v):
+#                 print(f'    id: {i}')
+#                 for k1, v1 in t.items():
+#                     print(f'        {k1}: {v1}')
 
-    predictor = TAGEPredictor(spec)
+#     predictor = TAGEPredictor(spec)
 
-    idx = 10
-    pred = get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0])
-    print(pred)
-    print(get_entry(predictor, 0, idx))
-    update_predictor(idx, True, 0, predictor.base_entries, None, predictor.metadata[0])
-    print(get_entry(predictor, 0, idx))
+#     idx = 10
+#     pred = get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0])
+#     print(pred)
+#     print(get_entry(predictor, 0, idx))
+#     update_predictor(idx, True, 0, predictor.base_entries, None, predictor.metadata[0])
+#     print(get_entry(predictor, 0, idx))
     
-    print(get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0]))
+#     print(get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0]))
 

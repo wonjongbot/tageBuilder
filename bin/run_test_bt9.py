@@ -8,8 +8,9 @@ from numba import njit
 import numpy as np
 import json
 import time
+import resource
 import logging
-
+import argparse
 
 import cProfile
 import pstats
@@ -90,7 +91,9 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     current_time = time.time()
     last_progress_time = current_time
     filelist = [
-        ('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz')
+        #('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz'),
+        # ('SHORT_MOBILE-1', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-1.bt9.trace.gz')
+        ('SHORT_SERVER-1', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-1.bt9.trace.gz')
     ]
 
     mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
@@ -133,6 +136,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         
         reader.finalize_stats()
         out += 'REPORT\n'
+        out += f'   TEST: {bm[0]}\n'
         for k,v in reader.report.items():
             out += f'    {k}: {v}\n'
         out += memout
@@ -143,7 +147,11 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     mainlogger = logging.getLogger(f"{__name__}")
     out = ''
     filelist = [
-        ('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz')
+        # ('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz'),
+        # ('SHORT_MOBILE-1', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-1.bt9.trace.gz'),
+        # ('LONG_MOBILE-1', settings.CBP16_TRACE_DIR + 'LONG_MOBILE-1.bt9.trace.gz'),
+        ('SHORT_SERVER-1', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-1.bt9.trace.gz'),
+        # ('LONG_SERVER-1', settings.CBP16_TRACE_DIR + 'LONG_SERVER-1.bt9.trace.gz')
     ]
 
     mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
@@ -152,6 +160,10 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         spec = yaml.safe_load(f)
 
     predictor = tage_optimized.TAGEPredictor(spec)
+
+    out += f'STORAGE REPORT'
+    for k,v in predictor.storage_report.items():
+        out += f"    {k}: {v}\n"
 
     for bm in filelist:
         print(f'TESTING {bm[0]}')
@@ -181,9 +193,11 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
                 predictor.comp_hist_tag0_arr, #comp_hist_tag0_arr
                 predictor.comp_hist_tag1_arr, #comp_hist_tag1_arr
                 predictor.tagged_tag_widths, #tagged_tag_widths
-                predictor.phist, #phist
-                predictor.use_alt_on_new_alloc, #use_alt_on_new_alloc
-                predictor.metadata[0] #metadata
+                predictor.ghist,
+                #predictor.phist, #phist
+                #predictor.use_alt_on_new_alloc, #use_alt_on_new_alloc
+                predictor.metadata[0], #metadata
+                predictor.rand_array
                 )
             
             for i, r in enumerate(results):
@@ -200,25 +214,73 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         assert(reader.report['is_sim_over'])
         
         reader.finalize_stats()
-        out += 'REPORT\n'
+        out += 'Sim report\n'
+        out += f'    Sim name: {bm[0]}\n'
         for k,v in reader.report.items():
             out += f'    {k}: {v}\n'
         #print(out_f)
     return out
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Tagebuilder!")
+    parser.add_argument("-spec", type=str, help="spec name")
+    parser.add_argument("-o", "--optimized", action="store_true", help="Use optimzed tage sim")
+    
+    args = parser.parse_args()
+    print(args)
+    spec = args.spec
+    optimized = args.optimized
 
-    with open(f'{settings.REPORT_DIR}OPTIMIZED_{configname}_{file_name_time}.txt', 'w') as f:
-        #profiler = cProfile.Profile()
-        #profiler.enable()
-        
-        foo = 'tage_sc_l'
-        out = main_optimized_tage(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".yaml")
-        #out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+foo+".json")
-        
-        #profiler.disable()
 
-        f.write(out)
+    if not optimized:
+        with open(f'{settings.REPORT_DIR}UNOPTIMIZED_{spec}_{file_name_time}.txt', 'w') as f:
+            #profiler = cProfile.Profile()
+            #profiler.enable()
+            start_wall = time.time()
+            start_resources = resource.getrusage(resource.RUSAGE_SELF)
+
+            out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+spec+".json")
+            
+            end_wall = time.time()
+            end_resources = resource.getrusage(resource.RUSAGE_SELF)
+
+            real_time = end_wall - start_wall
+            user_time = end_resources.ru_utime - start_resources.ru_utime
+            sys_time  = end_resources.ru_stime - start_resources.ru_stime
+            time_str = f'\nTIME\n'
+            time_str += f'    real {real_time:.3f} s\n'
+            time_str += f'    user {user_time:.3f} s\n'
+            time_str += f'    sys  {sys_time:.3f} s\n'
+
+            out += time_str
+            #profiler.disable()
+
+            f.write(out)
+    else:
+        with open(f'{settings.REPORT_DIR}OPTIMIZED_{spec}_{file_name_time}.txt', 'w') as f:
+            #profiler = cProfile.Profile()
+            #profiler.enable()
+
+            start_wall = time.time()
+            start_resources = resource.getrusage(resource.RUSAGE_SELF)
+            
+            out = main_optimized_tage(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+spec+".yaml")
+            
+            end_wall = time.time()
+            end_resources = resource.getrusage(resource.RUSAGE_SELF)
+
+            real_time = end_wall - start_wall
+            user_time = end_resources.ru_utime - start_resources.ru_utime
+            sys_time  = end_resources.ru_stime - start_resources.ru_stime
+            time_str = f'\nTIME\n'
+            time_str += f'    real {real_time:.3f} s\n'
+            time_str += f'    user {user_time:.3f} s\n'
+            time_str += f'    sys  {sys_time:.3f} s\n'
+
+            out += time_str
+            #profiler.disable()
+
+            f.write(out)
 
     #with open(f"{settings.REPORT_DIR}profiled/OPTIMIZED_profile_results_{configname}_{file_name_time}.txt", "w") as f:
     #  stats = pstats.Stats(profiler, stream=f)
