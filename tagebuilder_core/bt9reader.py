@@ -63,6 +63,12 @@ class BT9Reader:
             'mpki':0
         }
 
+        self.data = {
+            'br_inst_cnt': [],
+            'accuracy': [],
+            'mpki': []
+        }
+
     def _parse_file(self):
         section = None
         for l in self.file:
