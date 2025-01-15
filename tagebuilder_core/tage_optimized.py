@@ -316,7 +316,7 @@ def make_pred_n_update_batch(
         #     assert(False)
         # CHANGE RETURN VALUE SO IT GIVES COUNTER ITSELF??
         if main_pred_id > 0:
-            if (metadata['use_alt_on_new_alloc'] < 0) or (predictions[int(main_pred_id), 2] not in (3,4)):
+            if (metadata['use_alt_on_new_alloc'] < 0) or (predictions[int(main_pred_id), 2] not in (-1, 0)):
                 final_pred = main_pred
                 #final_pred_id = main_pred_id
             else:
@@ -556,7 +556,10 @@ class TAGEPredictor:
         self.max_hist_len = max(self.hist_len_arr)
 
         # TODO: Add seperate history registers for system calls
-        ghist_size_log = 10
+        if self.max_hist_len > 0:
+            ghist_size_log = int(np.ceil(np.log2(self.max_hist_len)))
+        else:
+            ghist_size_log = 1
         self.ghist_bufsize = 2**ghist_size_log
         self.ghist = np.zeros(self.ghist_bufsize ,dtype = np.uint8)
 
@@ -576,7 +579,7 @@ class TAGEPredictor:
 
         # Size calculation:
         self.storage_report['ghist_size_b'] = self.max_hist_len
-        self.storage_report['phist_size_b'] = self.metadata['phist_len']
+        self.storage_report['phist_size_b'] = self.metadata[0]['phist_len']
         self.storage_report['use_alt_on_new_alloc'] = 4
         self.storage_report['base_size_pred_b'] = 2**self.base_num_pred_entries_log
         self.storage_report['base_size_hyst_b'] = 2**self.base_num_hyst_entries_log
@@ -585,7 +588,7 @@ class TAGEPredictor:
                 self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(self.tagged_offsets[id + 1] - self.tagged_offsets[id])
             else:
                 self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(len(self.tagged_entries) - self.tagged_offsets[id])
-        self.storage_report['tot_size_Kb'] = ((sum(self.storage_report.values())) / 1024)[0]# / 8192
+        self.storage_report['tot_size_Kb'] = ((sum(self.storage_report.values())) / 1024)# / 8192
         
         print("storage_info:")
         for k,v in self.storage_report.items():
