@@ -583,48 +583,29 @@ class TAGEPredictor:
         self.storage_report['ghist_size_b'] = self.max_hist_len
         self.storage_report['phist_size_b'] = self.metadata[0]['phist_len']
         self.storage_report['use_alt_on_new_alloc'] = 4
-        self.storage_report['base_size_pred_b'] = 2**self.base_num_pred_entries_log
-        self.storage_report['base_size_hyst_b'] = 2**self.base_num_hyst_entries_log
+        self.storage_report['base'] = {}
+        self.storage_report['base']['pred_bit_b'] = 2**self.base_num_pred_entries_log
+        self.storage_report['base']['pred_hyst_b'] = 2**self.base_num_hyst_entries_log
+        self.storage_report['tagged'] = {}
         for id in range(1, self.num_tables):
             if id < self.num_tables - 1:
-                self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(self.tagged_offsets[id + 1] - self.tagged_offsets[id])
+                self.storage_report['tagged'][f'{id}_b'] = (3 + 2 + self.tagged_tag_widths[id])*(self.tagged_offsets[id + 1] - self.tagged_offsets[id])
             else:
-                self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(len(self.tagged_entries) - self.tagged_offsets[id])
-        self.storage_report['tot_size_Kb'] = ((sum(self.storage_report.values())) / 1024)# / 8192
+                self.storage_report['tagged'][f'{id}_b'] = (3 + 2 + self.tagged_tag_widths[id])*(len(self.tagged_entries) - self.tagged_offsets[id])
+        
+        total_storage = 0
+        for k,v in self.storage_report.items():
+            if type(v) == type({}):
+                for k1,v1 in v.items():
+                    total_storage += v1
+            else:
+                total_storage += v
+
+        self.storage_report['tot_size_b'] = total_storage #((sum(self.storage_report.values())) / 1024)# / 8192
         
         self.logger.info("storage_info:")
         for k,v in self.storage_report.items():
             self.logger.info(f"    {k}: {v}")
 
         return
-
-
-
-# if __name__ == "__main__":
-#     spec = None
-#     spec_src = "/home/wonjongbot/tageBuilder/configs/tage_l.yaml"
-#     with open(spec_src, "r") as f:
-#         spec = yaml.safe_load(f)
-    
-#     for k,v in spec.items():
-#         print(f'{k}')
-#         if k == 'global_config':
-#             for k1, v1 in v.items():
-#                 print(f'    {k1}: {v1}')
-#         if k == 'tables':
-#             for i, t in enumerate(v):
-#                 print(f'    id: {i}')
-#                 for k1, v1 in t.items():
-#                     print(f'        {k1}: {v1}')
-
-#     predictor = TAGEPredictor(spec)
-
-#     idx = 10
-#     pred = get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0])
-#     print(pred)
-#     print(get_entry(predictor, 0, idx))
-#     update_predictor(idx, True, 0, predictor.base_entries, None, predictor.metadata[0])
-#     print(get_entry(predictor, 0, idx))
-    
-#     print(get_prediction(idx, 0, predictor.base_entries, None, predictor.metadata[0]))
 
