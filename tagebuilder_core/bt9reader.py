@@ -29,11 +29,13 @@ br_dtype = np.dtype([
 
 # BT9Reader class that supports BT9 formatted traces
 class BT9Reader:
-    def __init__(self, filename):
+    def __init__(self, filename, logger):
         self.d = 0 # debug purposes
         self.d2 = None
         self.d3 = 0
         self.disjoint = {}
+
+        self.logger = logger
 
         self.filename = filename
         self.file = gzip.open(filename, mode="rt") #TODO: handle error gracefully
@@ -68,6 +70,23 @@ class BT9Reader:
             'accuracy': [],
             'mpki': []
         }
+    
+    def read_metadata(self):
+        section = None
+        for l in self.file:
+            l = l.strip()
+
+            if not l or l.startswith("#"):
+                continue
+
+            if l.startswith("BT9_SPA_TRACE_FORMAT"):
+                section = "metadata"
+                continue
+            elif l.startswith("BT9_NODES"):
+                break
+
+            if section == "metadata":
+                self._parse_metadata(l)
 
     def _parse_file(self):
         section = None
@@ -89,10 +108,12 @@ class BT9Reader:
             elif l.startswith("BT9_EDGE_SEQUENCE"):
                 section = "edge_seq"
                 self.br_seq_started = True
-                print(self.metadata)
+                if self.logger is not None:
+                    self.logger.info(f'TRACE METADATA: {self.metadata}')
                 self.nodeArr = np.array(self.nodeArr, node_dtype)
                 self.edgeArr = np.array(self.edgeArr, edge_dtype)
-                print(self.d)
+                if self.logger is not None:
+                    self.logger.info(f'{self.d}')
                 self.report['total_instruction_count'] = int(self.metadata['total_instruction_count'])
                 self.report['branch_instruction_count'] = int(self.metadata['branch_instruction_count'])
                 # while True:
@@ -222,7 +243,8 @@ class BT9Reader:
             if not l:
                 assert(False) # this probably shouldn't happen
             if l.startswith('EOF'):
-                print('EOF')
+                if self.logger is not None:
+                    self.logger.info('EOF')
                 retflag = 1
                 break
             else:

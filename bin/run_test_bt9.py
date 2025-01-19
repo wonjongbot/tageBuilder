@@ -11,8 +11,10 @@ import time
 import resource
 import logging
 import argparse
+import multiprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 import os
 import cProfile
@@ -20,6 +22,7 @@ import pstats
 
 from datetime import datetime
 
+progress_queue = multiprocessing.Queue()
 
 ITER_1k =   1000
 ITER_10k =  10_000
@@ -69,7 +72,7 @@ def statHeartBeat(reader):
         progressout = 'PROGRESS\n'
         for i in ('current_instruction_count', 'current_branch_instruction_count', 'current_accuracy', 'current_mpki'):
             progressout += f'    {i}: {reader.report[i]}'
-        print(progressout)
+        reader.logger.info(progressout)
         
 
 
@@ -224,7 +227,25 @@ def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         #print(out_f)
     return out
 
-def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1"):
+def setup_logger(sim_id, sim_output_dir):
+    logger = logging.getLogger(f"simulation_{sim_id}")
+    logger.setLevel(logging.INFO)
+
+    # File handler for process-specific logs
+    log_file = os.path.join(sim_output_dir, f"simulation_{sim_id}.log")
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.INFO)
+
+    # Log format
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+
+    # Add handler to the logger
+    logger.addHandler(fh)
+
+    return logger
+
+def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id = 0, logger = None):
     out = {}
     fileinfo = (test_name, settings.CBP16_TRACE_DIR + test_name + '.bt9.trace.gz')
 
@@ -242,21 +263,22 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1"):
     with open(out['config']['spec_file_dir'], 'r') as f:
         spec = yaml.safe_load(f)
 
-    predictor = tage_optimized.TAGEPredictor(spec)
+    predictor = tage_optimized.TAGEPredictor(spec, logger)
 
     out['storage_report'] = {}
     for k,v in predictor.storage_report.items():
         out['storage_report'][k] = v
 
-    print(f'TESTING {fileinfo[0]} :: {fileinfo[1]}')
-    reader = bt9reader.BT9Reader(fileinfo[1])
+    logger.info(f'TESTING {fileinfo[0]} :: {fileinfo[1]}')
+
+    reader = bt9reader.BT9Reader(fileinfo[1], logger)
     reader.init_tables()
     while True:
         # read batch by default
         b_size = 10000
         result = reader.read_branch_batch(b_size)
         if result == -1:
-            print('INCOMPLETE FILE DETECTED')
+            logger.info('INCOMPLETE FILE DETECTED')
             break
         
         #print(reader.br_infoArr)
@@ -288,10 +310,12 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1"):
             reader.report['current_branch_instruction_count'] += 1
             reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
         
+        progress_queue.put((sim_id, reader.report['current_branch_instruction_count']))
         statHeartBeat(reader)
         if result == 1:
             #reader.report['current_branch_instruction_count'] += 1
             reader.report['is_sim_over'] = True
+            progress_queue.put((sim_id, "done"))
             break
     
     assert(reader.report['is_sim_over'])
@@ -308,9 +332,10 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1"):
     time_report['real'] = real_time
     time_report['user'] = user_time
     time_report['sys'] = sys_time
-
+    time_report['sim_throughput'] = reader.report['current_branch_instruction_count']/real_time
 
     out['perf_report'] = {}
+    
     for k,v in reader.report.items():
         out['perf_report'][k] = v
     
@@ -366,9 +391,53 @@ def plot_data(df, output_image_path):
     #output_image_path = "simulation_dual_axis_plot.png"  # Replace with your desired file name
     plt.savefig(output_image_path, dpi=300)
 
+def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
+    """
+    wrapper function to write sim outputs and graphics
+    """
+    filepath = os.path.join(sim_dir, f'SIM_RESULT_{spec}_{sim_name}.json')
 
-if __name__ == "__main__":
+    logger = setup_logger(sim_id, sim_dir)
+    logger.setLevel(logging.INFO)
+    logger.info(f"Simulation {sim_id} started.")
 
+    with open(filepath, 'w') as f:
+        out, df = run_single_sim(spec, sim_name, sim_id, logger)
+        json.dump(out, f, indent = 4, default = np_to_json_serialize)
+    df_path = os.path.join(sim_dir, f'SIM_DATA_{spec}_{sim_name}.csv')
+    img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
+    df.to_csv(df_path, index = False)
+    plot_data(df, img_path)
+
+def cli_progbar(sim_metadatas, sim_list):
+    prog_bars = {}
+    overall_prog = tqdm(
+        total=len(sim_metadatas), desc="Overall Progress", position=len(sim_list), leave=True 
+    )
+
+    for sim_id, metadata in enumerate(sim_metadatas):
+        prog_bars[sim_id] = tqdm(
+            total=int(metadata['branch_instruction_count']), desc=f"{sim_list[sim_id]}", position=sim_id, leave=True 
+        )
+    
+    while True:
+        msg = progress_queue.get()
+        if msg == "all_done":
+            break
+        sim_id, progress = msg
+
+        if progress == "done":
+            #prog_bars[sim_id].close()
+            prog_bars[sim_id].n = prog_bars[sim_id].total
+            prog_bars[sim_id].refresh()  # Ensure it shows 100% since that's prettier
+            overall_prog.update(1)
+        else:
+            prog_bars[sim_id].n = progress
+            prog_bars[sim_id].refresh()
+
+    overall_prog.close()
+
+def main_parallel():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Tagebuilder!")
     parser.add_argument("-spec", type=str, help="spec name")
@@ -387,9 +456,9 @@ if __name__ == "__main__":
     sim_report_root = '/home/wonjongbot/tageBuilder/reports/'+f'sim_run_{file_name_time}'
     sim_list = [
         'SHORT_MOBILE-1',
-        # 'SHORT_MOBILE-2',
-        # 'SHORT_MOBILE-3',
-        # 'SHORT_MOBILE-4',
+        'SHORT_MOBILE-2',
+        'SHORT_MOBILE-3',
+        'SHORT_MOBILE-4',
         # 'LONG_MOBILE-1',
         # 'LONG_MOBILE-2',
         # 'LONG_MOBILE-3',
@@ -405,70 +474,32 @@ if __name__ == "__main__":
     ]
     subdirs = prepare_sim_folder(sim_report_root, sim_list)
 
-    #if optimized:
-    for sim_name in sim_list:
-        filepath = os.path.join(subdirs[sim_name], f'SIM_RESULT_{spec}_{sim_name}.json')
-        with open(filepath, 'w') as f:
-            out, df = run_single_sim(spec, sim_name) 
-            json.dump(out, f, indent = 4, default = np_to_json_serialize)
-        df_path = os.path.join(subdirs[sim_name], f'SIM_DATA_{spec}_{sim_name}.csv')
-        img_path = os.path.join(subdirs[sim_name], f'SIM_PLOT_{spec}_{sim_name}.png')
-        df.to_csv(df_path, index = False)
-        plot_data(df, img_path)
-    #else:
-    #    pass 
+    num_proc = os.cpu_count()
+    print(f"NUM PROC {num_proc}")
 
-    # if not optimized:
-    #     with open(f'{settings.REPORT_DIR}UNOPTIMIZED_{spec}_{file_name_time}.txt', 'w') as f:
-    #         #profiler = cProfile.Profile()
-    #         #profiler.enable()
-    #         start_wall = time.time()
-    #         start_resources = resource.getrusage(resource.RUSAGE_SELF)
+    # Read trace metadata for total # of br instructions
+    trace_metadatas = []
+    for trace_name in sim_list:
+        trace_dir = settings.CBP16_TRACE_DIR + trace_name + '.bt9.trace.gz'
+        reader = bt9reader.BT9Reader(trace_dir, None)
+        reader.read_metadata()
+        trace_metadatas.append(reader.metadata)
+    #print(trace_metadata)
 
-    #         out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+spec+".json")
-            
-    #         end_wall = time.time()
-    #         end_resources = resource.getrusage(resource.RUSAGE_SELF)
+    with multiprocessing.Pool(processes=num_proc) as pool:
 
-    #         real_time = end_wall - start_wall
-    #         user_time = end_resources.ru_utime - start_resources.ru_utime
-    #         sys_time  = end_resources.ru_stime - start_resources.ru_stime
-    #         time_str = f'\nTIME\n'
-    #         time_str += f'    real {real_time:.3f} s\n'
-    #         time_str += f'    user {user_time:.3f} s\n'
-    #         time_str += f'    sys  {sys_time:.3f} s\n'
+        progbar_proc = multiprocessing.Process(
+            target=cli_progbar, args=(trace_metadatas, sim_list,)
+        )
+        progbar_proc.start()
 
-    #         out += time_str
-    #         #profiler.disable()
+        pool.starmap(
+            run_sim_wrapper, 
+            [(subdirs[sim_name], sim_name, spec, sim_id) for sim_id, sim_name in enumerate(sim_list)]
+            )
 
-    #         f.write(out)
-    # else:
-    #     with open(f'{settings.REPORT_DIR}OPTIMIZED_{spec}_{file_name_time}.txt', 'w') as f:
-    #         #profiler = cProfile.Profile()
-    #         #profiler.enable()
+        progress_queue.put("all_done")
+        progbar_proc.join()
 
-    #         start_wall = time.time()
-    #         start_resources = resource.getrusage(resource.RUSAGE_SELF)
-            
-    #         out = main_optimized_tage(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+spec+".yaml")
-            
-    #         end_wall = time.time()
-    #         end_resources = resource.getrusage(resource.RUSAGE_SELF)
-
-    #         real_time = end_wall - start_wall
-    #         user_time = end_resources.ru_utime - start_resources.ru_utime
-    #         sys_time  = end_resources.ru_stime - start_resources.ru_stime
-    #         time_str = f'\nTIME\n'
-    #         time_str += f'    real {real_time:.3f} s\n'
-    #         time_str += f'    user {user_time:.3f} s\n'
-    #         time_str += f'    sys  {sys_time:.3f} s\n'
-
-    #         out += time_str
-    #         #profiler.disable()
-
-    #         f.write(out)
-
-    #with open(f"{settings.REPORT_DIR}profiled/OPTIMIZED_profile_results_{configname}_{file_name_time}.txt", "w") as f:
-    #  stats = pstats.Stats(profiler, stream=f)
-    #  stats.sort_stats("cumulative")  # Sort by cumulative time
-    #  stats.print_stats()
+if __name__ == "__main__":
+    main_parallel()

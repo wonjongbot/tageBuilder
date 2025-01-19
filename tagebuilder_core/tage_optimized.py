@@ -479,8 +479,10 @@ core logics are moved to function for optimization purposes
 """
 # core logic are moved to function for optimization purposes
 class TAGEPredictor:
-    def __init__(self, spec):
+    def __init__(self, spec, logger):
         self.storage_report = {}
+
+        self.logger = logger
 
         self.num_tables = len(spec['tables'])
         self.num_tot_tagged_entries = 0
@@ -568,14 +570,14 @@ class TAGEPredictor:
         self.metadata[0]['phist_len'] = spec['global_config']['phist_len']
         self.metadata[0]['u_tick_log'] = spec['global_config']['u_duration_log']
 
-        print(f'hist_len_arr:\n    {self.hist_len_arr}')
-        print(f'comp_hist_idx:\n    {self.comp_hist_idx_arr}')
-        print(f'comp_hist_tag0:\n   {self.comp_hist_tag0_arr}')
-        print(f'comp_hist_tag1:\n   {self.comp_hist_tag1_arr}')
-        print(f'tagged_offsets:\n    {self.tagged_offsets}')
-        print(f'base_size:\n    {len(self.base_entries)}')
-        print(f'tagged_size:\n    {len(self.tagged_entries)}')
-        print(f'tag_widths:\n    {self.tagged_tag_widths}')
+        self.logger.info(f'hist_len_arr:\n    {self.hist_len_arr}')
+        self.logger.info(f'comp_hist_idx:\n    {self.comp_hist_idx_arr}')
+        self.logger.info(f'comp_hist_tag0:\n   {self.comp_hist_tag0_arr}')
+        self.logger.info(f'comp_hist_tag1:\n   {self.comp_hist_tag1_arr}')
+        self.logger.info(f'tagged_offsets:\n    {self.tagged_offsets}')
+        self.logger.info(f'base_size:\n    {len(self.base_entries)}')
+        self.logger.info(f'tagged_size:\n    {len(self.tagged_entries)}')
+        self.logger.info(f'tag_widths:\n    {self.tagged_tag_widths}')
 
         # Size calculation:
         self.storage_report['ghist_size_b'] = self.max_hist_len
@@ -590,9 +592,9 @@ class TAGEPredictor:
                 self.storage_report[f'tagged_{id}_size_b'] = (3 + 2 + self.tagged_tag_widths[id])*(len(self.tagged_entries) - self.tagged_offsets[id])
         self.storage_report['tot_size_Kb'] = ((sum(self.storage_report.values())) / 1024)# / 8192
         
-        print("storage_info:")
+        self.logger.info("storage_info:")
         for k,v in self.storage_report.items():
-            print(f"    {k}: {v}")
+            self.logger.info(f"    {k}: {v}")
 
         return
 
