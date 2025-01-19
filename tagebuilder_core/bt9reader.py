@@ -3,6 +3,7 @@ import gzip
 import re
 import numpy as np
 import pstats
+from collections import defaultdict
 
 
 node_dtype = np.dtype([
@@ -44,6 +45,9 @@ class BT9Reader:
         self.metadata = {}
         self.nodeArr = []
         self.edgeArr = []
+
+        # scoreboard = { vaddr: {num_exe: 0, num_incorrect_preds: 0} }
+        self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0})
 
         self.br_addr = None
         self.br_taken = None
