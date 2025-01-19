@@ -3,6 +3,7 @@ from tagebuilder_core import bt9reader
 from tagebuilder_core import tage_predictor
 from tagebuilder_core import settings
 from tagebuilder_core import tage_optimized
+from tagebuilder_core import plot_gen
 from numba import njit
 
 import numpy as np
@@ -13,7 +14,6 @@ import logging
 import argparse
 import multiprocessing
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import os
@@ -74,158 +74,6 @@ def statHeartBeat(reader):
             progressout += f'    {i}: {reader.report[i]}'
         reader.logger.info(progressout)
         
-
-
-def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
-    mainlogger = logging.getLogger(f"{__name__}")
-    memout = ''
-    out = ''
-    sum_acc = 0
-    sum_mpki = 0
-    current_time = time.time()
-    last_progress_time = current_time
-    filelist = [
-        #('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz'),
-        # ('SHORT_MOBILE-1', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-1.bt9.trace.gz')
-        ('SHORT_SERVER-1', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-1.bt9.trace.gz')
-    ]
-
-    mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
-    
-    with open(spec_name, 'r') as f:
-        spec = json.load(f)
-
-    predictor = tage_predictor.TAGEPredictor()
-    predictor.init_tables(spec)
-    memout += predictor.sizelog
-
-    for bm in filelist:
-        print(f'TESTING {bm[0]}')
-        reader = bt9reader.BT9Reader(bm[1])
-        reader.init_tables()
-        while True:
-            current_time = time.time()
-            # read batch by default
-            b_size = 1000
-            result = reader.read_branch_batch(b_size)
-            if result == -1:
-                print('INCOMPLETE FILE DETECTED')
-                break
-            #print(reader.br_infoArr)
-            for b in reader.br_infoArr:
-                predictor.branch_pc = b['addr']
-                taken = bool(b['taken'])
-                pred = predictor.make_prediction()
-                reader.update_stats(pred == taken)
-                predictor.train_predictor(taken)
-                reader.report['current_branch_instruction_count'] += 1
-                reader.report['current_instruction_count'] += (1 + int(b['inst_cnt']))
-            statHeartBeat(reader)
-            if result == 1:
-                #reader.report['current_branch_instruction_count'] += 1
-                reader.report['is_sim_over'] = True
-                break
-            
-        assert(reader.report['is_sim_over'])
-        
-        reader.finalize_stats()
-        out += 'REPORT\n'
-        out += f'   TEST: {bm[0]}\n'
-        for k,v in reader.report.items():
-            out += f'    {k}: {v}\n'
-        out += memout
-        #print(out_f)
-    return out
-
-def main_optimized_tage(NUM_INSTR = -1, spec_name = "tage_custom.json"):
-    mainlogger = logging.getLogger(f"{__name__}")
-    out = ''
-    filelist = [
-        # ('SHORT_MOBILE-24', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-24.bt9.trace.gz'),
-        ('SHORT_MOBILE-1', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-1.bt9.trace.gz'),
-        ('SHORT_MOBILE-2', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-2.bt9.trace.gz'),
-        ('SHORT_MOBILE-3', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-3.bt9.trace.gz'),
-        ('SHORT_MOBILE-4', settings.CBP16_TRACE_DIR + 'SHORT_MOBILE-4.bt9.trace.gz'),
-        ('LONG_MOBILE-1', settings.CBP16_TRACE_DIR + 'LONG_MOBILE-1.bt9.trace.gz'),
-        ('LONG_MOBILE-2', settings.CBP16_TRACE_DIR + 'LONG_MOBILE-2.bt9.trace.gz'),
-        ('LONG_MOBILE-3', settings.CBP16_TRACE_DIR + 'LONG_MOBILE-3.bt9.trace.gz'),
-        ('LONG_MOBILE-4', settings.CBP16_TRACE_DIR + 'LONG_MOBILE-4.bt9.trace.gz'),
-        ('SHORT_SERVER-1', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-1.bt9.trace.gz'),
-        ('SHORT_SERVER-2', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-2.bt9.trace.gz'),
-        ('SHORT_SERVER-3', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-3.bt9.trace.gz'),
-        ('SHORT_SERVER-4', settings.CBP16_TRACE_DIR + 'SHORT_SERVER-4.bt9.trace.gz'),
-        ('LONG_SERVER-1', settings.CBP16_TRACE_DIR + 'LONG_SERVER-1.bt9.trace.gz'),
-        ('LONG_SERVER-2', settings.CBP16_TRACE_DIR + 'LONG_SERVER-2.bt9.trace.gz'),
-        ('LONG_SERVER-3', settings.CBP16_TRACE_DIR + 'LONG_SERVER-3.bt9.trace.gz'),
-        ('LONG_SERVER-4', settings.CBP16_TRACE_DIR + 'LONG_SERVER-4.bt9.trace.gz')
-    ]
-
-    mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
-    
-    with open(spec_name, 'r') as f:
-        spec = yaml.safe_load(f)
-
-    predictor = tage_optimized.TAGEPredictor(spec)
-
-    out += f'STORAGE REPORT'
-    for k,v in predictor.storage_report.items():
-        out += f"    {k}: {v}\n"
-
-    for bm in filelist:
-        print(f'TESTING {bm[0]}')
-        reader = bt9reader.BT9Reader(bm[1])
-        reader.init_tables()
-        while True:
-            current_time = time.time()
-            # read batch by default
-            b_size = 1000
-            result = reader.read_branch_batch(b_size)
-            if result == -1:
-                print('INCOMPLETE FILE DETECTED')
-                break
-            
-            #print(reader.br_infoArr)
-            results = tage_optimized.make_pred_n_update_batch(
-                reader.br_infoArr,
-                predictor.num_tables,
-                predictor.base_entries,
-                predictor.tagged_entries,
-                predictor.tagged_offsets, #tagged_offsets
-                predictor.tagged_idxs,
-                predictor.tagged_tags,
-                predictor.tagged_num_entries_log,
-                predictor.hist_len_arr, #hist_len_arr
-                predictor.comp_hist_idx_arr, #comp_hist_idx_arr
-                predictor.comp_hist_tag0_arr, #comp_hist_tag0_arr
-                predictor.comp_hist_tag1_arr, #comp_hist_tag1_arr
-                predictor.tagged_tag_widths, #tagged_tag_widths
-                predictor.ghist,
-                #predictor.phist, #phist
-                #predictor.use_alt_on_new_alloc, #use_alt_on_new_alloc
-                predictor.metadata[0], #metadata
-                predictor.rand_array
-                )
-            
-            for i, r in enumerate(results):
-                reader.update_stats(bool(r))
-                reader.report['current_branch_instruction_count'] += 1
-                reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
-            
-            statHeartBeat(reader)
-            if result == 1:
-                #reader.report['current_branch_instruction_count'] += 1
-                reader.report['is_sim_over'] = True
-                break
-            
-        assert(reader.report['is_sim_over'])
-        
-        reader.finalize_stats()
-        out += 'Sim report\n'
-        out += f'    Sim name: {bm[0]}\n'
-        for k,v in reader.report.items():
-            out += f'    {k}: {v}\n'
-        #print(out_f)
-    return out
 
 def setup_logger(sim_id, sim_output_dir):
     logger = logging.getLogger(f"simulation_{sim_id}")
@@ -301,11 +149,14 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             predictor.rand_array
             )
         
+        # TODO vectorize this
         for i, r in enumerate(results):
             # reader.update_stats(bool(r)) # remove function call overhead
             if bool(r):
+                reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_correct_preds'] += 1
                 reader.report['correct_predictions'] += 1
             else:
+                reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_incorrect_preds'] += 1
                 reader.report['incorrect_predictions'] += 1
             reader.report['current_branch_instruction_count'] += 1
             reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
@@ -334,10 +185,23 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     time_report['sys'] = sys_time
     time_report['sim_throughput'] = reader.report['current_branch_instruction_count']/real_time
 
+    addr_scoreboard_sorted = dict(sorted(reader.addr_scoreboard.items(), key=lambda x: x[1]['num_incorrect_preds'], reverse=True))
+
     out['perf_report'] = {}
     
     for k,v in reader.report.items():
         out['perf_report'][k] = v
+    
+    # find a better way to do this
+    top_n_offender = {}
+    i = 0
+    for k,v in addr_scoreboard_sorted.items():
+        if i > 64:
+            break
+        top_n_offender[hex(k)] = v
+        i += 1
+    logger.info(top_n_offender)
+    out['perf_report']['top_n_offender'] = top_n_offender
     
     out['time'] = time_report
 
@@ -365,32 +229,6 @@ def np_to_json_serialize(obj):
         return obj.tolist()
     raise TypeError(f"Type {type(obj)} not serializable")
 
-def plot_data(df, output_image_path):
-    # Create the figure and axis objects
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-
-    # Plot Accuracy on the left y-axis
-    color1 = "blue"
-    ax1.plot(df["br_inst_cnt"], df["accuracy"], color=color1, label="Accuracy")
-    ax1.set_xlabel("Branch Instruction Count")
-    ax1.set_ylabel("Accuracy", color=color1)
-    ax1.tick_params(axis="y", labelcolor=color1)
-    ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
-
-    # Create a second y-axis for MPKI
-    ax2 = ax1.twinx()
-    color2 = "red"
-    ax2.plot(df["br_inst_cnt"], df["mpki"], color=color2, label="MPKI")
-    ax2.set_ylabel("MPKI", color=color2)
-    ax2.tick_params(axis="y", labelcolor=color2)
-
-    # Add a title
-    plt.title("Branch Prediction Accuracy and MPKI")
-
-    # Save the plot as an image
-    #output_image_path = "simulation_dual_axis_plot.png"  # Replace with your desired file name
-    plt.savefig(output_image_path, dpi=300)
-
 def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
     """
     wrapper function to write sim outputs and graphics
@@ -406,8 +244,10 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
     df_path = os.path.join(sim_dir, f'SIM_DATA_{spec}_{sim_name}.csv')
     img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
+    img_stg_path = os.path.join(sim_dir, f'STG_PLOT_{spec}_{sim_name}.png')
     df.to_csv(df_path, index = False)
-    plot_data(df, img_path)
+    plot_gen.plot_mpki_accuracy(df, img_path)
+    plot_gen.plot_storage_bar(out['storage_report'], img_stg_path, logger)
 
 def cli_progbar(sim_metadatas, sim_list):
     prog_bars = {}
@@ -456,9 +296,9 @@ def main_parallel():
     sim_report_root = '/home/wonjongbot/tageBuilder/reports/'+f'sim_run_{file_name_time}'
     sim_list = [
         'SHORT_MOBILE-1',
-        'SHORT_MOBILE-2',
-        'SHORT_MOBILE-3',
-        'SHORT_MOBILE-4',
+        # 'SHORT_MOBILE-2',
+        # 'SHORT_MOBILE-3',
+        # 'SHORT_MOBILE-4',
         # 'LONG_MOBILE-1',
         # 'LONG_MOBILE-2',
         # 'LONG_MOBILE-3',
