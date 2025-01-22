@@ -22,8 +22,6 @@ import pstats
 
 from datetime import datetime
 
-progress_queue = multiprocessing.Queue()
-
 ITER_1k =   1000
 ITER_10k =  10_000
 ITER_100k = 100_000
@@ -93,7 +91,7 @@ def setup_logger(sim_id, sim_output_dir):
 
     return logger
 
-def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id = 0, logger = None):
+def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id = 0, prog_queue=None, logger = None):
     out = {}
     fileinfo = (test_name, settings.CBP16_TRACE_DIR + test_name + '.bt9.trace.gz')
 
@@ -161,12 +159,13 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             reader.report['current_branch_instruction_count'] += 1
             reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
         
-        progress_queue.put((sim_id, reader.report['current_branch_instruction_count']))
+        prog_queue.put((sim_id, reader.report['current_branch_instruction_count']))
         statHeartBeat(reader)
         if result == 1:
             #reader.report['current_branch_instruction_count'] += 1
             reader.report['is_sim_over'] = True
-            progress_queue.put((sim_id, "done"))
+            logger.info('SIM IS OVER')
+            prog_queue.put((sim_id, "done"))
             break
     
     assert(reader.report['is_sim_over'])
@@ -229,7 +228,7 @@ def np_to_json_serialize(obj):
         return obj.tolist()
     raise TypeError(f"Type {type(obj)} not serializable")
 
-def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
+def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     """
     wrapper function to write sim outputs and graphics
     """
@@ -240,7 +239,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
     logger.info(f"Simulation {sim_id} started.")
 
     with open(filepath, 'w') as f:
-        out, df = run_single_sim(spec, sim_name, sim_id, logger)
+        out, df = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
     df_path = os.path.join(sim_dir, f'SIM_DATA_{spec}_{sim_name}.csv')
     img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
@@ -249,7 +248,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id):
     plot_gen.plot_mpki_accuracy(df, img_path)
     plot_gen.plot_storage_bar(out['storage_report'], img_stg_path, logger)
 
-def cli_progbar(sim_metadatas, sim_list):
+def cli_progbar(sim_metadatas, sim_list, prog_queue):
     prog_bars = {}
     overall_prog = tqdm(
         total=len(sim_metadatas), desc="Overall Progress", position=len(sim_list), leave=True 
@@ -261,7 +260,7 @@ def cli_progbar(sim_metadatas, sim_list):
         )
     
     while True:
-        msg = progress_queue.get()
+        msg = prog_queue.get()
         if msg == "all_done":
             break
         sim_id, progress = msg
@@ -293,7 +292,7 @@ def main_parallel():
     # Format the time as a string suitable for file names
     file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
 
-    sim_report_root = '/home/wonjongbot/tageBuilder/reports/'+f'sim_run_{file_name_time}'
+    sim_report_root = settings.REPORT_DIR+f'sim_run_{file_name_time}'
     sim_list = [
         'SHORT_MOBILE-1',
         # 'SHORT_MOBILE-2',
@@ -313,6 +312,9 @@ def main_parallel():
         # 'LONG_SERVER-4',
     ]
     subdirs = prepare_sim_folder(sim_report_root, sim_list)
+    
+    manager = multiprocessing.Manager()
+    progress_queue = manager.Queue()
 
     num_proc = os.cpu_count()
     print(f"NUM PROC {num_proc}")
@@ -324,20 +326,20 @@ def main_parallel():
         reader = bt9reader.BT9Reader(trace_dir, None)
         reader.read_metadata()
         trace_metadatas.append(reader.metadata)
-    #print(trace_metadata)
+    # print(trace_metadatas)
 
     with multiprocessing.Pool(processes=num_proc) as pool:
 
         progbar_proc = multiprocessing.Process(
-            target=cli_progbar, args=(trace_metadatas, sim_list,)
+            target=cli_progbar, args=(trace_metadatas, sim_list, progress_queue)
         )
         progbar_proc.start()
 
         pool.starmap(
             run_sim_wrapper, 
-            [(subdirs[sim_name], sim_name, spec, sim_id) for sim_id, sim_name in enumerate(sim_list)]
+            [(subdirs[sim_name], sim_name, spec, sim_id, progress_queue) for sim_id, sim_name in enumerate(sim_list)]
             )
-
+        
         progress_queue.put("all_done")
         progbar_proc.join()
 
