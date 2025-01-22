@@ -109,12 +109,7 @@ def plot_storage_bar(storage_report, output_image_path, logger):
     plt.title("Stacked Bar Chart with Optimized Label Positioning", fontsize=14, fontweight='bold')
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     #plt.tight_layout()
-    plt.show()
-
     plt.savefig(output_image_path, dpi=300)
-
-
-
 
 def plot_mpki_accuracy(df, output_image_path):
     # Create the figure and axis objects
@@ -141,3 +136,4 @@ def plot_mpki_accuracy(df, output_image_path):
     # Save the plot as an image
     #output_image_path = "simulation_dual_axis_plot.png"  # Replace with your desired file name
     plt.savefig(output_image_path, dpi=300)
+    
