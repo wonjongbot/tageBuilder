@@ -4,3 +4,8 @@ adding individual address tracker -> +10 seconds ish (30% increase!!)
     -> need to optimize (use np vectorization? then I need to change how I store reports)
 
 memory map heatmap (bar with heatmap -> hotter == more mispredictions among instructions in this area)
+
+every machine is different
+    -> progress queue acting weird if put in global on mac (ok ubuntu)
+
+TODO change directory strings automatically
