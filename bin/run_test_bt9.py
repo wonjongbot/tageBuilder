@@ -93,7 +93,7 @@ def setup_logger(sim_id, sim_output_dir):
 
 def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id = 0, prog_queue=None, logger = None):
     out = {}
-    fileinfo = (test_name, settings.CBP16_TRACE_DIR + test_name + '.bt9.trace.gz')
+    fileinfo = (test_name, os.path.join(settings.CBP16_TRACE_DIR, test_name + '.bt9.trace.gz'))
 
     start_wall = time.time()
     start_resources = resource.getrusage(resource.RUSAGE_SELF)
@@ -102,7 +102,7 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     out['timestamp'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     out['config'] = {}
     out['config']['predictor'] = spec_name
-    out['config']['spec_file_dir'] = settings.SPEC_DIR + spec_name + '.yaml'
+    out['config']['spec_file_dir'] = os.path.join(settings.SPEC_DIR, spec_name + '.yaml')
     out['config']['trace'] = fileinfo[0]
     out['config']['trace_file_dir'] = fileinfo[1]
     
@@ -199,9 +199,9 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             break
         top_n_offender[hex(k)] = v
         i += 1
-    logger.info(top_n_offender)
-    out['perf_report']['top_n_offender'] = top_n_offender
-    
+    #logger.info(top_n_offender)
+    #logger.info(reader.addr_scoreboard)
+    out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
 
     df = pd.DataFrame(reader.data)
@@ -245,8 +245,11 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
     img_stg_path = os.path.join(sim_dir, f'STG_PLOT_{spec}_{sim_name}.png')
     df.to_csv(df_path, index = False)
+    
+    # plot results
     plot_gen.plot_mpki_accuracy(df, img_path)
     plot_gen.plot_storage_bar(out['storage_report'], img_stg_path, logger)
+    #plot_gen.plot_n_
 
 def cli_progbar(sim_metadatas, sim_list, prog_queue):
     prog_bars = {}
@@ -292,7 +295,7 @@ def main_parallel():
     # Format the time as a string suitable for file names
     file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
 
-    sim_report_root = settings.REPORT_DIR+f'sim_run_{file_name_time}'
+    sim_report_root = os.path.join(settings.REPORT_DIR, f'sim_run_{file_name_time}')
     sim_list = [
         'SHORT_MOBILE-1',
         # 'SHORT_MOBILE-2',
@@ -322,7 +325,8 @@ def main_parallel():
     # Read trace metadata for total # of br instructions
     trace_metadatas = []
     for trace_name in sim_list:
-        trace_dir = settings.CBP16_TRACE_DIR + trace_name + '.bt9.trace.gz'
+        trace_dir = os.path.join(settings.CBP16_TRACE_DIR, trace_name + '.bt9.trace.gz')
+        print(trace_dir)
         reader = bt9reader.BT9Reader(trace_dir, None)
         reader.read_metadata()
         trace_metadatas.append(reader.metadata)
