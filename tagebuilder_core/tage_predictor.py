@@ -1,4 +1,4 @@
-from tagebuilder_core import settings
+from tagebuilder_core import legacy_settings
 from typing import List, Optional, Dict, Tuple
 from numpy.typing import NDArray
 from numba import njit
@@ -171,23 +171,23 @@ class TAGEPredictor:
         self.base_pid = 0
 
         # dynamically assign method for mixing path history
-        if hasattr(settings, 'MIX_PATH_HISTORY_METHOD'):
+        if hasattr(legacy_settings, 'MIX_PATH_HISTORY_METHOD'):
             self.logger.info("Custom mix_path_history method installed from settings.py")
-            self.mix_path_history = types.MethodType(settings.MIX_PATH_HISTORY_METHOD, self)
+            self.mix_path_history = types.MethodType(legacy_settings.MIX_PATH_HISTORY_METHOD, self)
         else:
             self.logger.info("Using default mix_path_history method")
         
         # dynamically assign method for tag calculation
-        if hasattr(settings, 'TAG_CALC_METHOD'):
+        if hasattr(legacy_settings, 'TAG_CALC_METHOD'):
             self.logger.info("Custom get_taggedComp_tag method installed from settings.py")
-            self.get_taggedComp_tag = types.MethodType(settings.TAG_CALC_METHOD, self)
+            self.get_taggedComp_tag = types.MethodType(legacy_settings.TAG_CALC_METHOD, self)
         else:
             self.logger.info("Using default get_taggedComp_tag method")
         
         # dynamically assign method for index calculation
-        if hasattr(settings, 'IDX_CALC_METHOD'):
+        if hasattr(legacy_settings, 'IDX_CALC_METHOD'):
             self.logger.info("Custom get_taggedComp_idx method installed from settings.py")
-            self.get_taggedComp_idx = types.MethodType(settings.IDX_CALC_METHOD, self)
+            self.get_taggedComp_idx = types.MethodType(legacy_settings.IDX_CALC_METHOD, self)
         else:
             self.logger.info("Using default get_taggedComp_idx method")
 
