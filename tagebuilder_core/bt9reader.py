@@ -10,7 +10,8 @@ node_dtype = np.dtype([
     ('vaddr', np.uint64),
     ('paddr', np.uint64),
     ('opcode', np.uint32),
-    ('size', np.uint8)
+    ('size', np.uint8),
+    ('class', np.uint8)
     ])
 
 edge_dtype = np.dtype([
@@ -25,7 +26,8 @@ edge_dtype = np.dtype([
 br_dtype = np.dtype([
     ('addr', np.uint64),
     ('taken', np.uint8),
-    ('inst_cnt', np.uint16)
+    ('inst_cnt', np.uint16),
+    #('class', np.uint8)
 ])
 
 # BT9Reader class that supports BT9 formatted traces
@@ -47,7 +49,7 @@ class BT9Reader:
         self.edgeArr = []
 
         # scoreboard = { vaddr: {num_exe: 0, num_incorrect_preds: 0} }
-        self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0})
+        self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0, 'class': 0})
 
         self.br_addr = None
         self.br_taken = None
@@ -74,6 +76,14 @@ class BT9Reader:
             'accuracy': [],
             'mpki': []
         }
+        
+        self.br_type_enum = {"JMP": 0, "CALL": 1, "RET": 2}
+        self.br_mode_enum = {"DIR": 0 , "IND": 1}
+        self.br_cond_enum = {"UCD": 0, "CND": 1}
+        
+        self.br_type_unmap = ['JMP', 'CALL', 'RET']
+        self.br_mode_unmap = ['DIR', 'IND']
+        self.br_cond_unmap = ['UCD', 'CND']
     
     def read_metadata(self):
         section = None
@@ -116,6 +126,10 @@ class BT9Reader:
                     self.logger.info(f'TRACE METADATA: {self.metadata}')
                 self.nodeArr = np.array(self.nodeArr, node_dtype)
                 self.edgeArr = np.array(self.edgeArr, edge_dtype)
+                # initialize per address information(class):
+                for node in self.nodeArr:
+                    print(node)
+                    self.addr_scoreboard[node['vaddr']]['class'] = node['class']
                 if self.logger is not None:
                     self.logger.info(f'{self.d}')
                 self.report['total_instruction_count'] = int(self.metadata['total_instruction_count'])
@@ -151,19 +165,53 @@ class BT9Reader:
             self.metadata[parts[0]] = ""
         else:
             self.metadata[parts[0]] = parts[1]
+            
+    def encode_class(self, t, m, c)->int:
+        """encod string class info to packed int
 
+        Args:
+            t (str): type
+            m (str): mode 
+            c (str): conditional
+        """
+        return self.br_type_enum[t]<<2 | self.br_mode_enum[m]<<1 | self.br_cond_enum[c]        
+        
+    def decode_class(self, cls_b):
+        """decode packed class information to string
+
+        Args:
+            cls_b (_type_): packed int
+
+        Returns:
+            (str): set of decoded class strings 
+        """
+        t = self.br_type_unmap[(cls_b>>2) & 3]
+        m = self.br_mode_unmap[(cls_b>>1) & 1]
+        c = self.br_cond_unmap[(cls_b) & 1]
+        return (t,m,c) 
+    
     #    +->for idx 0
     #    |
     #[(vaddr, paddr, opcode, size), ... , (vaddr, paddr, opcode, size)]
     def _parse_node(self, l):
         p = l.split()
+        if len(p) > 6:
+            #print(p)
+            cls_str = p[7]
+            cls_str = cls_str.split('+')
+            cls = self.encode_class(*cls_str)
+        else:
+            cls = 0
+        
         el = (
             np.uint64(int(p[2], 16)), # vaddr
             np.uint64(0) if p[3] == "-" else np.uint64(int(p[3], 16)), # paddr
             np.uint32(int(p[4], 16)), # opcode
-            np.uint8(p[5]) # size
+            np.uint8(p[5]), # size
+            np.uint8(cls) # class
             )
         self.nodeArr.append(el)
+        #print(el)
 
         assert(p[0] == "NODE")
         assert(self.nodeArr[int(p[1])] == el and self.nodeArr[int(p[1])] is el)
@@ -262,6 +310,7 @@ class BT9Reader:
         br_addrs = np.array(self.nodeArr[src_ids]['vaddr'], dtype=np.uint64)
         br_takens = np.array(edges['taken'], dtype = np.uint8)
         br_inst_cnts = np.array(edges['inst_cnt'], dtype = np.uint16)
+        #br_classes = np.array(self.nodeArr[src_ids]['class'])
         #print(len(br_addrs))
 
         self.br_infoArr = np.zeros(len(br_addrs), dtype=br_dtype)
@@ -269,6 +318,7 @@ class BT9Reader:
         self.br_infoArr['addr'] = br_addrs
         self.br_infoArr['taken'] = br_takens
         self.br_infoArr['inst_cnt'] = br_inst_cnts
+        #self.br_infoArr['class'] = br_classes
 
         return retflag
 
@@ -292,7 +342,7 @@ if __name__ == "__main__":
     profiler = cProfile.Profile()
     profiler.enable()
     profiler.disable()
-    file = "/home/wonjongbot/tageBuilder/cbp16/traces/SHORT_MOBILE-24.bt9.trace.gz"
+    file = "/Users/wonjongbot/tageBuilder/CBP16 Data/evaluationTraces/SHORT_MOBILE-1.bt9.trace.gz"
     r = BT9Reader(file)
 
     r.init_tables()
