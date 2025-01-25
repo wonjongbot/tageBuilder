@@ -27,7 +27,7 @@ coredir = os.path.join(cwd, 'tagebuilder_core')
 settingfile_dir = os.path.join(cwd, 'tagebuilder_core/settings.py')
 
 settings_components = {
-    'CBP16_TRACE_DIR': os.path.join(extracted_dir, 'evaulationTraces'),
+    'CBP16_TRACE_DIR': os.path.join(extracted_dir, 'evaluationTraces'),
     'REPORT_DIR': os.path.join(cwd, 'reports'),
     'SPEC_DIR': os.path.join(cwd, 'configs')
 }
