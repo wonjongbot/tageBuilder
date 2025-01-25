@@ -195,7 +195,7 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     top_n_offender = {}
     i = 0
     for k,v in addr_scoreboard_sorted.items():
-        if i > 64:
+        if i > 10:
             break
         top_n_offender[hex(k)] = v
         i += 1
@@ -204,9 +204,11 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
 
-    df = pd.DataFrame(reader.data)
+    df_overall_mpki = pd.DataFrame(reader.data)
+    df_per_addr_stats = pd.DataFrame.from_dict(reader.addr_scoreboard, orient='index')
+    df_per_addr_stats.index.name = 'br_addr'
 
-    return out, df
+    return out, df_overall_mpki, df_per_addr_stats
 
 def prepare_sim_folder(base_folder_dir, subfolders):
     ret = {}
@@ -239,15 +241,17 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     logger.info(f"Simulation {sim_id} started.")
 
     with open(filepath, 'w') as f:
-        out, df = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
+        out, df_overall_mpki, df_per_br_info = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
-    df_path = os.path.join(sim_dir, f'SIM_DATA_{spec}_{sim_name}.csv')
+    df_overall_path = os.path.join(sim_dir, f'OVERALL_DATA_{spec}_{sim_name}.csv')
+    df_per_branch_path = os.path.join(sim_dir, f'PER_BRANCH_DATA_{spec}_{sim_name}.csv')
     img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
     img_stg_path = os.path.join(sim_dir, f'STG_PLOT_{spec}_{sim_name}.png')
-    df.to_csv(df_path, index = False)
+    df_overall_mpki.to_csv(df_overall_path, index = False)
+    df_per_br_info.to_csv(df_per_branch_path, index = True)
     
     # plot results
-    plot_gen.plot_mpki_accuracy(df, img_path)
+    plot_gen.plot_mpki_accuracy(df_overall_mpki, img_path)
     plot_gen.plot_storage_bar(out['storage_report'], img_stg_path, logger)
     #plot_gen.plot_n_
 
