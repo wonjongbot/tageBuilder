@@ -184,24 +184,24 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     time_report['sys'] = sys_time
     time_report['sim_throughput'] = reader.report['current_branch_instruction_count']/real_time
 
-    addr_scoreboard_sorted = dict(sorted(reader.addr_scoreboard.items(), key=lambda x: x[1]['num_incorrect_preds'], reverse=True))
+    #addr_scoreboard_sorted = dict(sorted(reader.addr_scoreboard.items(), key=lambda x: x[1]['num_incorrect_preds'], reverse=True))
 
     out['perf_report'] = {}
     
     for k,v in reader.report.items():
         out['perf_report'][k] = v
     
-    # find a better way to do this
-    top_n_offender = {}
-    i = 0
-    for k,v in addr_scoreboard_sorted.items():
-        if i > 10:
-            break
-        top_n_offender[hex(k)] = v
-        i += 1
+    # # find a better way to do this
+    # top_n_offender = {}
+    # i = 0
+    # for k,v in addr_scoreboard_sorted.items():
+    #     if i > 10:
+    #         break
+    #     top_n_offender[hex(k)] = v
+    #     i += 1
     #logger.info(top_n_offender)
     #logger.info(reader.addr_scoreboard)
-    out['perf_report']['top_n_offender'] = top_n_offender    
+    # out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
 
     df_overall_mpki = pd.DataFrame(reader.data)
@@ -242,18 +242,27 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
 
     with open(filepath, 'w') as f:
         out, df_overall_mpki, df_per_br_info = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
+        # get n most incorrect predictions
+        df_top_n_offender = df_per_br_info.nlargest(20, 'num_incorrect_preds')
+        out['perf_report']['top_n_offender'] = df_top_n_offender.to_dict(orient = 'index')
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
-    df_overall_path = os.path.join(sim_dir, f'OVERALL_DATA_{spec}_{sim_name}.csv')
-    df_per_branch_path = os.path.join(sim_dir, f'PER_BRANCH_DATA_{spec}_{sim_name}.csv')
-    img_path = os.path.join(sim_dir, f'SIM_PLOT_{spec}_{sim_name}.png')
-    img_stg_path = os.path.join(sim_dir, f'STG_PLOT_{spec}_{sim_name}.png')
+
+    df_overall_path = os.path.join(sim_dir, f'OVERALL_DATA.csv')
+    df_per_branch_path = os.path.join(sim_dir, f'PER_BRANCH_DATA.csv')
+
+    img_path = os.path.join(sim_dir, f'PLOT_OVERALL_MPKI_ACCURCY.png')
+    img_storage_path = os.path.join(sim_dir, f'PLOT_STORAGE.png')
+    img_top_n_addr = os.path.join(sim_dir, f'PLOT_TOP_N_ADDR.png')
+    img_top_n_sum = os.path.join(sim_dir, f'PLOT_TOP_N_SUM.png')
+
     df_overall_mpki.to_csv(df_overall_path, index = False)
     df_per_br_info.to_csv(df_per_branch_path, index = True)
     
     # plot results
     plot_gen.plot_mpki_accuracy(df_overall_mpki, img_path)
-    plot_gen.plot_storage_bar(out['storage_report'], img_stg_path, logger)
-    #plot_gen.plot_n_
+    plot_gen.plot_storage_bar(out['storage_report'], img_storage_path, logger)
+    plot_gen.plot_top_n_addr(out['perf_report']['top_n_offender'], out['perf_report']['incorrect_predictions'], img_top_n_addr)
+    plot_gen.plot_top_n_sum(out['perf_report']['top_n_offender'], out['perf_report']['incorrect_predictions'], img_top_n_sum)
 
 def cli_progbar(sim_metadatas, sim_list, prog_queue):
     prog_bars = {}

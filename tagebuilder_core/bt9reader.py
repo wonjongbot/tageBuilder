@@ -128,7 +128,7 @@ class BT9Reader:
                 self.edgeArr = np.array(self.edgeArr, edge_dtype)
                 # initialize per address information(class):
                 for node in self.nodeArr:
-                    print(node)
+                    #print(node)
                     self.addr_scoreboard[node['vaddr']]['class'] = node['class']
                 if self.logger is not None:
                     self.logger.info(f'{self.d}')

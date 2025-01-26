@@ -2,6 +2,71 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+def plot_top_n_sum(top_n_addr, total_mispred_cnt, output_image_path):
+    num  = [i for i in range(1, len(top_n_addr) + 1)]
+    num_incorrect = [top_n_addr[item]['num_incorrect_preds'] for item in top_n_addr]
+
+    incorrect_ratio = [
+        100*(sum(num_incorrect[:i]) / total_mispred_cnt)
+        for i in range(1, len(num_incorrect) + 1)
+    ]
+    # Set positions for side-by-side bars
+    bar_width = 0.8
+    index = np.arange(len(num))
+
+    # Create the figure and axis
+    fig, ax1 = plt.subplots(figsize=(12, 8))
+
+    # Plotting incorrect predictions
+    hbars = ax1.barh(index, incorrect_ratio, bar_width, label='Incorrect Prediction Ratio', color='skyblue')
+    ax1.set_xlabel('% of MPKI')
+    ax1.set_ylabel('Top N offender')
+    ax1.set_yticks(index)
+    ax1.set_yticklabels(num)
+    ax1.invert_yaxis()
+
+    # Add legend
+    ax1.legend(loc='upper right')
+    ax1.bar_label(hbars, fmt='%.2f')
+    # Display the plot
+    plt.title('Top n branch instructions MPKI %')
+    plt.tight_layout()
+
+    plt.savefig(output_image_path, dpi=300)
+
+def plot_top_n_addr(top_n_addr, total_mispred_cnt, output_image_path):
+    addrs  = [hex(int(item)) for item in top_n_addr]
+    num_incorrect = [top_n_addr[item]['num_incorrect_preds'] for item in top_n_addr]
+
+    incorrect_ratio = [
+        100*(item / total_mispred_cnt)
+        for item in num_incorrect
+    ]
+    # Set positions for side-by-side bars
+    bar_width = 0.8
+    index = np.arange(len(addrs))
+
+    # Create the figure and axis
+    fig, ax1 = plt.subplots(figsize=(12, 8))
+
+    # Plotting incorrect predictions
+    hbars = ax1.barh(index, incorrect_ratio, bar_width, label='Incorrect Prediction Ratio', color='skyblue')
+    ax1.set_xlabel('% of MPKI')
+    ax1.set_ylabel('Addresses')
+    ax1.set_yticks(index)
+    ax1.set_yticklabels(addrs)
+    ax1.invert_yaxis()
+
+    # Add legend
+    ax1.legend(loc='upper right')
+    ax1.bar_label(hbars, fmt='%.2f')
+    # Display the plot
+    plt.title('Top n branch instructions MPKI % per address')
+    plt.tight_layout()
+
+    plt.savefig(output_image_path, dpi=300)
+
+
 def plot_storage_bar(storage_report, output_image_path, logger):
     key2label = {
         'ghist_size_b': 'Global history reg',
@@ -106,7 +171,7 @@ def plot_storage_bar(storage_report, output_image_path, logger):
     ax.set_ylim(-3, 3)  # Extra space above and below the bar
 
     # Final title styling
-    plt.title("Stacked Bar Chart with Optimized Label Positioning", fontsize=14, fontweight='bold')
+    plt.title("Storage budget bar chart", fontsize=14, fontweight='bold')
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     #plt.tight_layout()
     plt.savefig(output_image_path, dpi=300)
