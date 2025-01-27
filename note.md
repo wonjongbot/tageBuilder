@@ -13,10 +13,23 @@ every machine is different
 
 - [x] change directory strings automatically
 - [x] track per address stats individually and store as csv
-  - [ ] do top n calcualtion after df conversion (easier to do)
+  - [x] do top n calcualtion after df conversion (easier to do)
 - [ ] mpki update per branch address? (track lost sim BW)
   - [ ] what would be a better way to calculate each branches' contribution to mpki (accuracy is bad since it doesn't account for frequency)
+  - [ ] use pandas df? (do it and capture perf gain or loss) 
 
+try except catch to delete incomplete tests?
+
+---
+Todo for (1/27/25)
+
+- [x] df test plot
+- [ ] change per address scoreboard into df bulk update using vectorization
+- [x] integrate df test plot into code
+- [x] add more class base stats (mean median plot, class frequency pie chart, total mispredictions)
+- [ ] logic for storing transitions
+
+- any way to tell if its weak in local / global history ??
 ---
 
 ## Recommended Next Steps (Short-Term Milestones)
@@ -31,8 +44,8 @@ Below are prioritized tasks from your to-do list, with suggestions on how to gro
 2. Expanded Statistics (Incorrect Predictions per Branch Address)
    - [x] Track mispredictions per PC (or branch site) and store them in CSV/JSON.
    - [x] Visualize “top-K worst offenders” as a bar chart or a cumulative fraction plot (e.g., top 10 PCs cause X% of mispredictions).
-     - [ ] have a graph for accuracy per address (implementation done, integration needed)
-     - [ ] have another graph for combining top-n offenders
+     - [x] have a graph for accuracy per address (implementation done, integration needed)
+     - [x] have another graph for combining top-n offenders
    - Suggested Additional Stats:
      - [ ] Per-branch dynamic frequency (how often a branch is executed).
      - [ ] Transitional behavior (the ratio of taken-to-not-taken transitions).
@@ -40,11 +53,11 @@ Below are prioritized tasks from your to-do list, with suggestions on how to gro
      - [ ] Confidence histogram for incorrect predictions
        - [ ] needs to track confidence (hystersis) per prediction
      - [x] track class per PC ([Type]+[Mode]+[Cond])
-       - [ ] MPKI/Accuracy per class
+       - [x] MPKI/Accuracy per class
        - [ ] Confidence distribution per class
        - [ ] Transition rate vs accuracy heatmaps
-       - [ ] workload analysis
-         - [ ] radar charts for instruction type
+       - [x] workload analysis
+         - [x] pie --radar-- charts for instruction type
 
 > Why Phase 1 first?
 >

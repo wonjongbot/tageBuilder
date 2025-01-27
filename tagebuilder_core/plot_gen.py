@@ -1,6 +1,73 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from . import helpers
+
+def plot_per_class(df, output_image_path):
+    stats = df.groupby('class').agg({'num_incorrect_preds': ['median', 'mean', 'sum', 'count', 'std']})
+
+    stats.columns = ['_'.join(col).strip() for col in stats.columns]
+    #print(stats)
+
+    fig = plt.figure(figsize=(14,10))
+    gs = fig.add_gridspec(
+        nrows = 2, ncols= 2
+    )
+    ax1 = fig.add_subplot(gs[0,0])
+    ax2 = fig.add_subplot(gs[0,1])
+    ax3 = fig.add_subplot(gs[1,:])
+    #fig, (ax1, ax3) = plt.subplots(2,2,figsize=(14,6), sharey=False)
+    fig.suptitle('Branch class statistics', fontsize = 16)
+
+    x = np.arange(len(stats.index))
+    #TODO maybe move out decode class to some other module (i.e tools.py)
+    helper = helpers.helper()
+    xticks = [helper.decode_class(i) for i in stats.index]
+    w = 0.35
+
+    meanbar = ax1.bar(x - w/2, stats['num_incorrect_preds_mean'], w, label='Mean', color = 'skyblue', yerr = stats['num_incorrect_preds_std'], capsize=10)
+    medbar = ax1.bar(x + w/2, stats['num_incorrect_preds_median'], w, label='Median', color = 'salmon')
+    #sumbar = ax1.bar(x + w/3, stats['num_incorrect_preds_sum'], w, label = 'Sum', color = 'lightgreen')
+
+    ax1.set_title('Mean/median per branch class (log)')
+    ax1.set_xlabel('Class')
+    ax1.set_ylabel('Mispredictions')
+    ax1.set_yscale('log')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(xticks, fontsize=7, rotation=40)
+    ax1.legend()
+    ax1.grid(axis = 'y', linestyle='--', alpha=0.7)
+
+    for bar in meanbar + medbar:
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.1f}', ha='center', va='bottom')
+
+    counts = stats['num_incorrect_preds_count']
+    explode = [0.1 if (v / sum(counts)) < 0.05 else 0 for v in counts]
+    ax2.pie(stats['num_incorrect_preds_count'], labels=xticks, 
+            autopct='%1.1f%%', explode=explode,
+            rotatelabels=True, 
+            textprops={'fontsize': 7})
+    ax2.set_title('Class frequency')
+
+    sumbar = ax3.bar(x, stats['num_incorrect_preds_sum'], w, color = 'lightgreen')
+    ax3.set_title('Total mispredictions (log)')
+    ax3.set_xlabel('Class')
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(xticks, fontsize=8)
+    ax3.set_ylabel('Total mispredictions')
+    ax3.set_yscale('log')
+    ax3.grid(axis='y', linestyle='--', alpha=0.7)
+
+    for bar in sumbar:
+        height = bar.get_height()
+        ax3.text(bar.get_x() + bar.get_width()/2., height,
+            f'{height}', ha='center', va='bottom')
+
+    plt.tight_layout()
+
+    plt.savefig(output_image_path, dpi=300)
 
 def plot_top_n_sum(top_n_addr, total_mispred_cnt, output_image_path):
     num  = [i for i in range(1, len(top_n_addr) + 1)]
@@ -187,6 +254,19 @@ def plot_mpki_accuracy(df, output_image_path):
     ax1.set_ylabel("Accuracy", color=color1)
     ax1.tick_params(axis="y", labelcolor=color1)
     ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax1.set_xscale('log')
+    asymptote_acc = df["accuracy"].iloc[-len(df)//10:].mean()
+    ax1.axhline(asymptote_acc, color = color1, linestyle='--', alpha=0.7, label=f'{asymptote_acc:.2f}')
+    ax1.annotate(f'{asymptote_acc:.4f}', 
+                xy=(1.02, asymptote_acc),
+                xycoords=('axes fraction', 'data'),
+                color=color1,
+                va='center',
+                ha='left',
+                fontsize=9,
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1),
+                )
+
 
     # Create a second y-axis for MPKI
     ax2 = ax1.twinx()
@@ -194,6 +274,21 @@ def plot_mpki_accuracy(df, output_image_path):
     ax2.plot(df["br_inst_cnt"], df["mpki"], color=color2, label="MPKI")
     ax2.set_ylabel("MPKI", color=color2)
     ax2.tick_params(axis="y", labelcolor=color2)
+    ax2.set_xscale('log')
+    asymptote_mpki = df["mpki"].iloc[-len(df)//10:].mean()
+    ax2.axhline(asymptote_mpki, color = color2, 
+                linestyle='--', alpha=0.7, 
+                label=f'{asymptote_mpki:.2f}')
+
+    ax2.annotate(f'{asymptote_mpki:.4f}', 
+                xy=(1.02, asymptote_mpki),
+                xycoords=('axes fraction', 'data'),
+                color=color2,
+                va='center',
+                ha='left',
+                fontsize=9,
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1),
+                )
 
     # Add a title
     plt.title("Branch Prediction Accuracy and MPKI")

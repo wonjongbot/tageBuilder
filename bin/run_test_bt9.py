@@ -147,7 +147,9 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             predictor.rand_array
             )
         
-        # TODO vectorize this
+        # TODO vectorize per address stats
+        # generate array of addresses that matches results reader.br_infoArr['addr']
+        # batch update report
         for i, r in enumerate(results):
             # reader.update_stats(bool(r)) # remove function call overhead
             if bool(r):
@@ -254,6 +256,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     img_storage_path = os.path.join(sim_dir, f'PLOT_STORAGE.png')
     img_top_n_addr = os.path.join(sim_dir, f'PLOT_TOP_N_ADDR.png')
     img_top_n_sum = os.path.join(sim_dir, f'PLOT_TOP_N_SUM.png')
+    img_per_class = os.path.join(sim_dir, f'PLOT_PER_CLASS_STAT.png')
 
     df_overall_mpki.to_csv(df_overall_path, index = False)
     df_per_br_info.to_csv(df_per_branch_path, index = True)
@@ -263,6 +266,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     plot_gen.plot_storage_bar(out['storage_report'], img_storage_path, logger)
     plot_gen.plot_top_n_addr(out['perf_report']['top_n_offender'], out['perf_report']['incorrect_predictions'], img_top_n_addr)
     plot_gen.plot_top_n_sum(out['perf_report']['top_n_offender'], out['perf_report']['incorrect_predictions'], img_top_n_sum)
+    plot_gen.plot_per_class(df_per_br_info, img_per_class)
 
 def cli_progbar(sim_metadatas, sim_list, prog_queue):
     prog_bars = {}
