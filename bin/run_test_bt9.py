@@ -147,7 +147,7 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             predictor.rand_array
             )
         
-        # TODO vectorize per address stats
+        # TODO vectorize per address stats TODO TODO TODO TODO
         # generate array of addresses that matches results reader.br_infoArr['addr']
         # batch update report
         for i, r in enumerate(results):

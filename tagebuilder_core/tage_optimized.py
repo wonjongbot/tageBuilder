@@ -260,6 +260,9 @@ def make_pred_n_update_batch(
     metadata,
     rand_array
     ):
+    """
+    return 0 if prediction is false 1 if true : numpy array uint8
+    """
     #predictor_id = 0
     results = np.zeros(len(br_infos), dtype=np.uint8)
     for i, b in enumerate(br_infos):

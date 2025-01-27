@@ -2,6 +2,7 @@ import cProfile
 import gzip
 import re
 import numpy as np
+import pandas as pd
 import pstats
 from collections import defaultdict
 
@@ -50,6 +51,7 @@ class BT9Reader:
 
         # scoreboard = { vaddr: {num_exe: 0, num_incorrect_preds: 0} }
         self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0, 'class': 0})
+        self.addr_scoreboard_df = None
 
         self.br_addr = None
         self.br_taken = None
@@ -127,6 +129,15 @@ class BT9Reader:
                 self.nodeArr = np.array(self.nodeArr, node_dtype)
                 self.edgeArr = np.array(self.edgeArr, edge_dtype)
                 # initialize per address information(class):
+
+                addrs = self.nodeArr['vaddr']
+                classes = self.nodeArr['class']
+                self.addr_scoreboard_df = pd.DataFrame({
+                    'num_correct_preds': 0,
+                    'num_incorrect_preds': 0,
+                    'class': classes
+                }, index = addrs)
+                self.logger.info(self.addr_scoreboard_df)
                 for node in self.nodeArr:
                     #print(node)
                     self.addr_scoreboard[node['vaddr']]['class'] = node['class']
