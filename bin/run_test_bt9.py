@@ -119,6 +119,8 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
 
     reader = bt9reader.BT9Reader(fileinfo[1], logger)
     reader.init_tables()
+
+    debug = 0
     while True:
         # read batch by default
         b_size = 10000
@@ -150,16 +152,43 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         # TODO vectorize per address stats TODO TODO TODO TODO
         # generate array of addresses that matches results reader.br_infoArr['addr']
         # batch update report
-        for i, r in enumerate(results):
-            # reader.update_stats(bool(r)) # remove function call overhead
-            if bool(r):
-                reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_correct_preds'] += 1
-                reader.report['correct_predictions'] += 1
-            else:
-                reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_incorrect_preds'] += 1
-                reader.report['incorrect_predictions'] += 1
-            reader.report['current_branch_instruction_count'] += 1
-            reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
+
+        # mask correct and incorrect predictions
+        results_true = (results == 1)
+        results_false = ~results_true
+
+        idx_true = np.flatnonzero(results_true)
+        idx_false = np.flatnonzero(results_false)
+
+        addr_true = reader.br_infoArr[idx_true]['addr']
+        addr_false = reader.br_infoArr[idx_false]['addr']
+
+        # update per address scoreboard
+        # logger.info(reader.addr_scoreboard_df.loc[addr_true, 'num_correct_preds'])
+        unique_addr_true, true_counts = np.unique(addr_true, return_counts=True)
+        reader.addr_scoreboard_df.loc[unique_addr_true, 'num_correct_preds'] += true_counts
+        # logger.info(reader.addr_scoreboard_df.loc[addr_true, 'num_correct_preds'])
+        unique_addr_false, false_counts = np.unique(addr_false, return_counts=True)
+        reader.addr_scoreboard_df.loc[unique_addr_false, 'num_incorrect_preds'] += false_counts
+
+        debug += len(addr_false)
+
+        # update global statistics
+        reader.report['correct_predictions'] += len(idx_true)
+        reader.report['incorrect_predictions'] += len(idx_false)
+        reader.report ['current_branch_instruction_count'] += (len(results))
+        reader.report['current_instruction_count'] += np.sum(reader.br_infoArr[np.concatenate([idx_true, idx_false])]['inst_cnt'])
+
+        # for i, r in enumerate(results):
+        #     # reader.update_stats(bool(r)) # remove function call overhead
+        #     if bool(r):
+        #         reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_correct_preds'] += 1
+        #         # reader.report['correct_predictions'] += 1
+        #     else:
+        #         reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_incorrect_preds'] += 1
+        #         # reader.report['incorrect_predictions'] += 1
+        #     # reader.report['current_branch_instruction_count'] += 1
+        #     # reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
         
         prog_queue.put((sim_id, reader.report['current_branch_instruction_count']))
         statHeartBeat(reader)
@@ -171,6 +200,8 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             break
     
     assert(reader.report['is_sim_over'])
+
+    logger.info(debug)
 
     reader.finalize_stats()
 
@@ -207,10 +238,11 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     out['time'] = time_report
 
     df_overall_mpki = pd.DataFrame(reader.data)
-    df_per_addr_stats = pd.DataFrame.from_dict(reader.addr_scoreboard, orient='index')
-    df_per_addr_stats.index.name = 'br_addr'
+    logger.info(reader.addr_scoreboard_df)
+    #df_per_addr_stats = pd.DataFrame.from_dict(reader.addr_scoreboard, orient='index')
+    reader.addr_scoreboard_df.index.name = 'br_addr'
 
-    return out, df_overall_mpki, df_per_addr_stats
+    return out, df_overall_mpki, reader.addr_scoreboard_df
 
 def prepare_sim_folder(base_folder_dir, subfolders):
     ret = {}
