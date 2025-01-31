@@ -50,8 +50,9 @@ class BT9Reader:
         self.edgeArr = []
 
         # scoreboard = { vaddr: {num_exe: 0, num_incorrect_preds: 0} }
-        self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0, 'class': 0})
+        # self.addr_scoreboard = defaultdict(lambda: {'num_correct_preds': 0, 'num_incorrect_preds': 0, 'class': 0})
         self.addr_scoreboard_df = None
+        self.predictor_scoreboard_df = None
 
         self.br_addr = None
         self.br_taken = None
@@ -86,6 +87,16 @@ class BT9Reader:
         self.br_type_unmap = ['JMP', 'CALL', 'RET']
         self.br_mode_unmap = ['DIR', 'IND']
         self.br_cond_unmap = ['UCD', 'CND']
+    
+    def init_predictor_scoreboard(self, num_predictors):
+        ids = [id for id in range(num_predictors)]
+        self.predictor_scoreboard_df = pd.DataFrame({
+            'num_correct_preds': 0,
+            'num_incorrect_preds': 0,
+            'used_as_main': 0,
+            'used_as_alt': 0
+        }, index = ids)
+        self.predictor_scoreboard_df.index.name = 'pid'
     
     def read_metadata(self):
         section = None
@@ -137,10 +148,11 @@ class BT9Reader:
                     'num_incorrect_preds': 0,
                     'class': classes
                 }, index = addrs)
+                self.addr_scoreboard_df.index.name = 'br_addr'
                 self.logger.info(self.addr_scoreboard_df)
-                for node in self.nodeArr:
-                    #print(node)
-                    self.addr_scoreboard[node['vaddr']]['class'] = node['class']
+                # for node in self.nodeArr:
+                #     #print(node)
+                #     self.addr_scoreboard[node['vaddr']]['class'] = node['class']
                 if self.logger is not None:
                     self.logger.info(f'{self.d}')
                 self.report['total_instruction_count'] = int(self.metadata['total_instruction_count'])

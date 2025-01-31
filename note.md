@@ -16,15 +16,20 @@ every machine is different
   - [x] do top n calcualtion after df conversion (easier to do)
 - [ ] mpki update per branch address? (track lost sim BW)
   - [ ] what would be a better way to calculate each branches' contribution to mpki (accuracy is bad since it doesn't account for frequency)
-  - [ ] use pandas df? (do it and capture perf gain or loss) 
+  - [x] use pandas df? (do it and capture perf gain or loss) 
 
 try except catch to delete incomplete tests?
 
 ---
-Todo for (1/27/25)
+Todos
 
 - [x] df test plot
-- [ ] change per address scoreboard into df bulk update using vectorization
+- [x] change per address scoreboard into df bulk update using vectorization
+    - 88.15% increase in simulation throughput (after also vectorizing global stats)
+      - after adding per predictor stats sim throughput decreased 31% (nooo)
+        - after fully vectorizing per predictor stats, sim throughput decreased only 11% (nice)
+    - vectorized access doesn't account for duplicated index values. so simple increment doesn't work (need to use np.unique instead)
+    - BATCH size matters! 10,000 -> 1_000_000 :: 19% increase in bandwidth
 - [x] integrate df test plot into code
 - [x] add more class base stats (mean median plot, class frequency pie chart, total mispredictions)
 - [ ] logic for storing transitions
@@ -47,7 +52,7 @@ Below are prioritized tasks from your to-do list, with suggestions on how to gro
      - [x] have a graph for accuracy per address (implementation done, integration needed)
      - [x] have another graph for combining top-n offenders
    - Suggested Additional Stats:
-     - [ ] Per-branch dynamic frequency (how often a branch is executed).
+     - [x] Per-branch dynamic frequency (how often a branch is executed). (probably class is more useful)
      - [ ] Transitional behavior (the ratio of taken-to-not-taken transitions).
      - [ ] Correlation metrics (e.g., how often a certain set of bits in global history correlates with a branch outcome).
      - [ ] Confidence histogram for incorrect predictions

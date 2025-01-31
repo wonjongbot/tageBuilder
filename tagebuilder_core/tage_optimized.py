@@ -18,6 +18,13 @@ metadtype = np.dtype([
     ('ghist_size_log', np.uint32),
     ('rand', np.uint32)
     ])
+
+retdtype = np.dtype([
+    ('pid', np.int8),
+    ('pred', np.int8),
+    ('is_alt', np.int8),
+    ('ctr', np.int8),
+    ])
 ### GLOBAL DONE
 
 ### SECTION: HISTORY OPERATIONS
@@ -264,7 +271,7 @@ def make_pred_n_update_batch(
     return 0 if prediction is false 1 if true : numpy array uint8
     """
     #predictor_id = 0
-    results = np.zeros(len(br_infos), dtype=np.uint8)
+    results = np.zeros(len(br_infos), dtype=retdtype)
     for i, b in enumerate(br_infos):
         # any way to keep parallelized pools? need to reduce 
         #   parallellization overhead
@@ -321,19 +328,27 @@ def make_pred_n_update_batch(
         if main_pred_id > 0:
             if (metadata['use_alt_on_new_alloc'] < 0) or (predictions[int(main_pred_id), 2] not in (-1, 0)):
                 final_pred = main_pred
-                #final_pred_id = main_pred_id
+                is_alt = False
+                final_pred_id = main_pred_id
             else:
                 final_pred = alt_pred
-                #final_pred_id = alt_pred_id
+                is_alt = True
+                final_pred_id = alt_pred_id
         else:
             final_pred = alt_pred
-            #final_pred_id = alt_pred_id
+            is_alt = True
+            final_pred_id = alt_pred_id
 
         #print(pred, b['taken'])
         
         # DEBUG
         # print('table id used:',main_pred_id)
-        results[i] = np.uint8(final_pred == b['taken'])
+        # results[i] = (final_pred_id, final_pred, is_alt, predictions[final_pred_id, 2])
+        results[i]['pid'] = final_pred_id
+        results[i]['pred'] = final_pred
+        results[i]['is_alt'] = is_alt
+        results[i]['ctr'] = predictions[final_pred_id, 2]
+        isCorrect = np.uint8(final_pred == b['taken'])
 
         # UPDATE PREDICTORS
 
@@ -341,7 +356,7 @@ def make_pred_n_update_batch(
         metadata['rand'] = (metadata['rand'] + 1) % 10000
         #if (main_pred_id == num_tables - 1):
         #    print("using largest ghist for id", main_pred_id)
-        is_new_alloc = (not results[i]) and (main_pred_id < num_tables - 1)
+        is_new_alloc = (not isCorrect) and (main_pred_id < num_tables - 1)
         
         # Allocate new table entry for update
         if main_pred_id > 0:

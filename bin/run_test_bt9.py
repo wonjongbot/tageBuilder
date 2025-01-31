@@ -119,11 +119,12 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
 
     reader = bt9reader.BT9Reader(fileinfo[1], logger)
     reader.init_tables()
+    reader.init_predictor_scoreboard(predictor.num_tables)
 
     debug = 0
     while True:
         # read batch by default
-        b_size = 10000
+        b_size = 1_000_000
         result = reader.read_branch_batch(b_size)
         if result == -1:
             logger.info('INCOMPLETE FILE DETECTED')
@@ -148,22 +149,22 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             predictor.metadata[0], #metadata
             predictor.rand_array
             )
-        
-        # TODO vectorize per address stats TODO TODO TODO TODO
-        # generate array of addresses that matches results reader.br_infoArr['addr']
-        # batch update report
 
+        # Per Address stats
         # mask correct and incorrect predictions
-        results_true = (results == 1)
+        isCorrects = results['pred'] == reader.br_infoArr['taken']
+        results_true = (isCorrects == 1)
         results_false = ~results_true
 
-        idx_true = np.flatnonzero(results_true)
-        idx_false = np.flatnonzero(results_false)
+        # grab index from masks
+        #idx_true = np.flatnonzero(results_true)
+        #idx_false = np.flatnonzero(results_false)
 
-        addr_true = reader.br_infoArr[idx_true]['addr']
-        addr_false = reader.br_infoArr[idx_false]['addr']
+        # grab address using index
+        addr_true = reader.br_infoArr['addr'][results_true]
+        addr_false = reader.br_infoArr['addr'][results_false]
 
-        # update per address scoreboard
+        # update per address scoreboard (vectorized)
         # logger.info(reader.addr_scoreboard_df.loc[addr_true, 'num_correct_preds'])
         unique_addr_true, true_counts = np.unique(addr_true, return_counts=True)
         reader.addr_scoreboard_df.loc[unique_addr_true, 'num_correct_preds'] += true_counts
@@ -171,13 +172,42 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         unique_addr_false, false_counts = np.unique(addr_false, return_counts=True)
         reader.addr_scoreboard_df.loc[unique_addr_false, 'num_incorrect_preds'] += false_counts
 
+        # Per predictor stats TODO: do everything vectorized? is this possible?
+        # for id in range(predictor.num_tables):
+        #     result_matching_id_flag = (results['pid'] == id)
+        #     idx_matching_id = np.flatnonzero(result_matching_id_flag)
+        #     # filter out for predictor in this iteration
+        #     idx_true_per_id = np.intersect1d(idx_matching_id, idx_true)
+        #     idx_false_per_id = np.intersect1d(idx_matching_id, idx_false)
+        #     reader.predictor_scoreboard_df.loc[id, 'num_correct_preds'] += len(idx_true_per_id)
+        #     reader.predictor_scoreboard_df.loc[id, 'num_incorrect_preds'] += len(idx_false_per_id)
+
+        # per predictor stats (holy vectorization!)
+        # mispredictions and correct predictions
+        unique_pid_true, pid_counts_true = np.unique(results['pid'][results_true], return_counts=True)
+        unique_pid_false, pid_counts_false = np.unique(results['pid'][results_false], return_counts=True)
+
+        reader.predictor_scoreboard_df.loc[unique_pid_true, 'num_correct_preds'] += pid_counts_true
+        reader.predictor_scoreboard_df.loc[unique_pid_false, 'num_incorrect_preds'] += pid_counts_false
+        
+        # alternate / main predictions
+        is_alts = (results['is_alt'] == 1)
+        is_mains = ~is_alts
+
+        unique_pid_alt, pid_counts_alt = np.unique(results['pid'][is_alts], return_counts=True)
+        unique_pid_main, pid_counts_main = np.unique(results['pid'][is_mains], return_counts=True)
+
+        reader.predictor_scoreboard_df.loc[unique_pid_alt, 'used_as_alt'] += pid_counts_alt
+        reader.predictor_scoreboard_df.loc[unique_pid_main, 'used_as_main'] += pid_counts_main
+
+
         debug += len(addr_false)
 
         # update global statistics
-        reader.report['correct_predictions'] += len(idx_true)
-        reader.report['incorrect_predictions'] += len(idx_false)
-        reader.report ['current_branch_instruction_count'] += (len(results))
-        reader.report['current_instruction_count'] += np.sum(reader.br_infoArr[np.concatenate([idx_true, idx_false])]['inst_cnt'])
+        reader.report['correct_predictions'] += len(addr_true)
+        reader.report['incorrect_predictions'] += len(addr_false)
+        reader.report ['current_branch_instruction_count'] += (len(isCorrects))
+        reader.report['current_instruction_count'] += np.sum(reader.br_infoArr['inst_cnt'])
 
         # for i, r in enumerate(results):
         #     # reader.update_stats(bool(r)) # remove function call overhead
@@ -234,15 +264,16 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     #     i += 1
     #logger.info(top_n_offender)
     #logger.info(reader.addr_scoreboard)
+    logger.info(reader.predictor_scoreboard_df)
     # out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
 
     df_overall_mpki = pd.DataFrame(reader.data)
     logger.info(reader.addr_scoreboard_df)
     #df_per_addr_stats = pd.DataFrame.from_dict(reader.addr_scoreboard, orient='index')
-    reader.addr_scoreboard_df.index.name = 'br_addr'
+    #reader.addr_scoreboard_df.index.name = 'br_addr'
 
-    return out, df_overall_mpki, reader.addr_scoreboard_df
+    return out, df_overall_mpki, reader.addr_scoreboard_df, reader.predictor_scoreboard_df
 
 def prepare_sim_folder(base_folder_dir, subfolders):
     ret = {}
@@ -274,15 +305,17 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     logger.setLevel(logging.INFO)
     logger.info(f"Simulation {sim_id} started.")
 
+    out, df_overall_mpki, df_per_br_info, df_predictor_scoreboard = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
+    # get n most incorrect predictions
+    df_top_n_offender = df_per_br_info.nlargest(20, 'num_incorrect_preds')
+    out['perf_report']['top_n_offender'] = df_top_n_offender.to_dict(orient = 'index')
+
     with open(filepath, 'w') as f:
-        out, df_overall_mpki, df_per_br_info = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
-        # get n most incorrect predictions
-        df_top_n_offender = df_per_br_info.nlargest(20, 'num_incorrect_preds')
-        out['perf_report']['top_n_offender'] = df_top_n_offender.to_dict(orient = 'index')
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
 
     df_overall_path = os.path.join(sim_dir, f'OVERALL_DATA.csv')
     df_per_branch_path = os.path.join(sim_dir, f'PER_BRANCH_DATA.csv')
+    df_predictor_path = os.path.join(sim_dir, f'PER_PREDICTOR_DATA.csv')
 
     img_path = os.path.join(sim_dir, f'PLOT_OVERALL_MPKI_ACCURCY.png')
     img_storage_path = os.path.join(sim_dir, f'PLOT_STORAGE.png')
@@ -292,6 +325,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
 
     df_overall_mpki.to_csv(df_overall_path, index = False)
     df_per_br_info.to_csv(df_per_branch_path, index = True)
+    df_predictor_scoreboard.to_csv(df_predictor_path,index = True)
     
     # plot results
     plot_gen.plot_mpki_accuracy(df_overall_mpki, img_path)
