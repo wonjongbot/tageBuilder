@@ -25,16 +25,20 @@ Todos
 
 - [x] df test plot
 - [x] change per address scoreboard into df bulk update using vectorization
-    - 88.15% increase in simulation throughput (after also vectorizing global stats)
-      - after adding per predictor stats sim throughput decreased 31% (nooo)
-        - after fully vectorizing per predictor stats, sim throughput decreased only 11% (nice)
-    - vectorized access doesn't account for duplicated index values. so simple increment doesn't work (need to use np.unique instead)
-    - BATCH size matters! 10,000 -> 1_000_000 :: 19% increase in bandwidth
 - [x] integrate df test plot into code
 - [x] add more class base stats (mean median plot, class frequency pie chart, total mispredictions)
 - [ ] logic for storing transitions
 
 - any way to tell if its weak in local / global history ??
+---
+Some perf improvements:
+
+- 88.15% increase in simulation throughput (after also vectorizing global stats)
+  - after adding per predictor stats sim throughput decreased 31% (nooo)
+    - after fully vectorizing per predictor stats, sim throughput decreased only 11% (nice)
+- vectorized access doesn't account for duplicated index values. so simple increment doesn't work (need to use np.unique instead)
+- BATCH size matters! 10,000 -> 1_000_000 :: 19% increase in bandwidth
+- after removing unecessary numpy datatype casting, there seem to be a very small but noticeable(ish) amount of BW increase (.4% lol)
 ---
 
 ## Recommended Next Steps (Short-Term Milestones)
