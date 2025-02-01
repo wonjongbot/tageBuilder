@@ -87,6 +87,21 @@ class BT9Reader:
         self.br_type_unmap = ['JMP', 'CALL', 'RET']
         self.br_mode_unmap = ['DIR', 'IND']
         self.br_cond_unmap = ['UCD', 'CND']
+
+        self.predictor_scoreboard_structure = [
+            'num_correct_preds',
+            'num_incorrect_preds',
+            'used_as_main',
+            'used_as_alt',
+            'conf_-4',
+            'conf_-3',
+            'conf_-2',
+            'conf_-1',
+            'conf_0',
+            'conf_1',
+            'conf_2',
+            'conf_3'
+        ]
     
     def init_predictor_scoreboard(self, num_predictors):
         ids = [id for id in range(num_predictors)]
@@ -94,7 +109,15 @@ class BT9Reader:
             'num_correct_preds': 0,
             'num_incorrect_preds': 0,
             'used_as_main': 0,
-            'used_as_alt': 0
+            'used_as_alt': 0,
+            'conf_-4': 0,
+            'conf_-3': 0,
+            'conf_-2': 0,
+            'conf_-1': 0,
+            'conf_0': 0,
+            'conf_1': 0,
+            'conf_2': 0,
+            'conf_3': 0
         }, index = ids)
         self.predictor_scoreboard_df.index.name = 'pid'
     

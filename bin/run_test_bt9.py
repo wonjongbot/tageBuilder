@@ -122,6 +122,8 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     reader.init_predictor_scoreboard(predictor.num_tables)
 
     debug = 0
+
+    expected_confidence_cols = [f'conf_{i}' for i in range(-4,4)]
     while True:
         # read batch by default
         b_size = 1_000_000
@@ -200,6 +202,14 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         reader.predictor_scoreboard_df.loc[unique_pid_alt, 'used_as_alt'] += pid_counts_alt
         reader.predictor_scoreboard_df.loc[unique_pid_main, 'used_as_main'] += pid_counts_main
 
+        # confidence among predictions (use pandas crosstab for funzies)
+        mispred_df = pd.DataFrame(results[results_false])
+        confidence_crosstab = pd.crosstab(mispred_df['pid'], mispred_df['ctr'])
+        confidence_crosstab.columns = [f'conf_{col}' for col in confidence_crosstab.columns]
+        confidence_crosstab = confidence_crosstab.reindex(columns=expected_confidence_cols, fill_value=0)
+        reader.predictor_scoreboard_df = reader.predictor_scoreboard_df.add(confidence_crosstab, fill_value=0)
+        # logger.info(confidence_crosstab)
+
 
         debug += len(addr_false)
 
@@ -264,6 +274,7 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     #     i += 1
     #logger.info(top_n_offender)
     #logger.info(reader.addr_scoreboard)
+    reader.predictor_scoreboard_df = reader.predictor_scoreboard_df[reader.predictor_scoreboard_structure]
     logger.info(reader.predictor_scoreboard_df)
     # out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
