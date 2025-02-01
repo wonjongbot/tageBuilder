@@ -167,8 +167,11 @@ def get_prediction(
     # base prediction
     if pid == 0:
         idx_bim = (bpc) & metadata['base_idx_mask']
+        prediction_entry = b_entries[idx_bim]
+        hyst_entry = b_entries[idx_bim >> metadata['base_pred_hyst_diff_log']]
+        ctr = (b_entries[idx_bim] & 0b10) | (hyst_entry & 0b1)
         #print(branch_pc, base_entries[idx_bim])
-        return np.array([np.int8((b_entries[idx_bim] >> 1) & 0b1), np.int8(1), b_entries[idx_bim]], dtype=np.int8)
+        return np.array([(prediction_entry >> 1) & 0b1, 1, ctr], dtype=np.int8)
     # tage prediction (single predictor)
     else:
         phist = metadata['phist']
@@ -193,9 +196,9 @@ def get_prediction(
         # NOTE: is it possible to somehow notify parent function
         #       so that we don't have to predict from unecessary ones?
         if e['tag'] == t_tag:
-            return np.array([np.int8(e['pred_ctr'] >= 0), np.int8(1), e['pred_ctr']], dtype=np.int8)
+            return np.array([e['pred_ctr'] >= 0, 1, e['pred_ctr']], dtype=np.int8)
         else:
-            return np.array([np.int8(0), np.int8(0), np.int8(-1)], dtype=np.int8)
+            return np.array([0, 0, -1], dtype=np.int8)
 
 @njit(inline='always')
 def update_base_predictor(
@@ -268,7 +271,10 @@ def make_pred_n_update_batch(
     rand_array
     ):
     """
-    return 0 if prediction is false 1 if true : numpy array uint8
+    return value:   results[i]['pid']: predictor id used for final prediction
+                    results[i]['pred'] = 1 for taken, 0 for not taken
+                    results[i]['is_alt'] = 1 if pid is alternate predictor, 0 if main predictor
+                    results[i]['ctr'] = counter value of predictor for confidence ( [0,3] for base; [-4,3] for tagged )
     """
     #predictor_id = 0
     results = np.zeros(len(br_infos), dtype=retdtype)
@@ -276,6 +282,7 @@ def make_pred_n_update_batch(
         # any way to keep parallelized pools? need to reduce 
         #   parallellization overhead
         predictions = np.zeros((num_tables, 3), dtype=np.int8)
+        # TODO I could probably vectorize this
         for predictor_id in range(num_tables): #prange(num_tables):
             predictions[predictor_id, :] = get_prediction(
                 b['addr'],
