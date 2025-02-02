@@ -22,6 +22,43 @@ TAGEbuilder is a Python-based simulator and performance evaluation tool for TAGE
 - **Parallel Processing:**  
   Runs multiple traces in parallel processes to speed up evaluations.
 
+## Project directory
+
+```
+Directory structure:
+└── wonjongbot-tagebuilder/
+    ├── README.md
+    ├── LICENSE
+    ├── requirements.txt
+    ├── setup.py
+    ├── test_plot.py
+    ├── bin/
+    │   ├── __init__.py
+    │   ├── run_test.py
+    │   └── run_test_bt9.py-----------> **main script to run the tool**
+    ├── configs/
+    │   ├── sim_list.yaml-------------> **list of traces to run**
+    │   ├── bimodal.yaml
+    │   ├── tage_l.yaml
+    │   └── tage_sc_l.yaml
+    ├── docs/
+    │   ├── example_sim_output.tar.gz
+    │   ├── note.md
+    │   └── img/
+    ├── reports/
+    │   └── sim_run_<timestamp>-------> **folders for each sim job**
+    ├── scripts/
+    │   └── clean_dir.sh
+    └── tagebuilder_core/
+        ├── __init__.py
+        ├── bt9reader.py--------------> **BT9 formatted trace file reader**
+        ├── helpers.py----------------> **helper functions for plotting and more**
+        ├── plot_gen.py---------------> **plotting functions**
+        ├── settings.py---------------> **directories for simulation traces and results**
+        └── tage_optimized.py---------> **tage predictor model logic**
+
+```
+
 ## Installation / Initial setup
 
 1) Clone the repo
