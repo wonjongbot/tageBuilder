@@ -1,0 +1,5 @@
+Take a look at settings.py file to change directories and stuff
+
+run using this command
+`cd tageBuilder`
+`<your python env> -m bin.run_test_bt9 -spec "<SPEC NAME>" -o`

@@ -1,6 +1,8 @@
 import struct
 import numpy as np 
 import os
+import logging
+
 class TraceReader:
     def __init__(self, filename):
         """
@@ -9,20 +11,24 @@ class TraceReader:
             * initialize variables for statistics
                 * stat_num_instr: total instruction count
                 * stat_num_br: total branch instruction count
-                * stat_mis_pred: total misprected branch instruction count
+                * stat_mis_pred: total mispredicted branch instruction count
                 * stat_accuracy: prediction %
                 * stat_mispKI: mispredictions/1000s of instructions
             * initialize variables to interface with predictor model
                 * instr_addr: instruction address
                 * br_taken: whether branch at given instr_addr is taken
         """
+
+        self.logger = logging.getLogger(f"{__name__}")
+        self.logger.info("Initializing TraceReader")
+
         self.filename = filename
         self.file = open(filename, 'rb')
         self.stat_num_instr = 0
         self.stat_num_br_est = 0
         self.stat_num_br = 0
         self.stat_mis_pred = 0
-        self.stat_accuarcy = 0
+        self.stat_accuracy = 0
         self.stat_mispKI = 0
         self.read_stats()
         
@@ -68,7 +74,7 @@ class TraceReader:
         self.br_info_arr = []
         data = self.file.read(5*batch_size)
         if data == b'':
-            print('REACHED EOF')
+            self.logger.info("EOF detected")
             return -1
         
         self.stat_num_br += (len(data) // 5)
@@ -93,8 +99,8 @@ class TraceReader:
         report = f"Number of instructions:\t\t{self.stat_num_instr}\n"
         report += f"Number of branches:\t\t{self.stat_num_br}\n"
         report += f"Number of mispredictions:\t{self.stat_mis_pred}\n"
-        self.stat_accuarcy = 100*(1 - self.stat_mis_pred / self.stat_num_br)
-        report += f"prediction %:\t{self.stat_accuarcy:,.3f}\n"
+        self.stat_accuracy = 100*(1 - self.stat_mis_pred / self.stat_num_br)
+        report += f"prediction %:\t{self.stat_accuracy:,.3f}\n"
         self.stat_mispKI = self.stat_mis_pred / (self.stat_num_instr/1000)
         report += f"1000*wrong_cc_predicts/total insts => 1000 * {self.stat_mis_pred} / {self.stat_num_instr} = {self.stat_mispKI:,.3f}\n"
         return report
@@ -103,7 +109,7 @@ class TraceReader:
         """
         get prediction % and misp/KI
         """
-        return (self.stat_accuarcy, self.stat_mispKI)
+        return (self.stat_accuracy, self.stat_mispKI)
 
     def __del__(self):
         """

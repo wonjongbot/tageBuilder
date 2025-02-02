@@ -1,0 +1,10 @@
+{
+    "base": {
+        "isTaggedComp": false,
+        "hist_len":  0,
+        "ent_pred": 14,
+        "ent_hyst": 12,
+        "tag_width": null,
+        "id": 0
+    }
+}

@@ -1,0 +1,95 @@
+global_config:
+    foo: true
+    phist_len: 16
+    u_duration_log: 19
+tables:
+    - name: base
+      isBase: true
+      hist_len: 0
+      num_pred_entries_log: 14
+      num_hyst_entries_log: 12
+      tag_width: 0
+
+    - name: t1
+      isBase: false
+      hist_len: 8
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 8
+
+    - name: t2
+      isBase: false
+      hist_len: 12
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 9
+
+    - name: t3
+      isBase: false
+      hist_len: 18
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 9
+
+    - name: t4
+      isBase: false
+      hist_len: 27
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 10
+
+    - name: t5
+      isBase: false
+      hist_len: 40
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 10
+
+    - name: t6
+      isBase: false
+      hist_len: 60
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 11
+
+    - name: t7
+      isBase: false
+      hist_len: 90
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 11
+
+    - name: t8
+      isBase: false
+      hist_len: 135
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 12
+
+    - name: t9
+      isBase: false
+      hist_len: 203
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 10
+      tag_width: 12
+
+    - name: t10
+      isBase: false
+      hist_len: 305
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 13
+
+    - name: t11
+      isBase: false
+      hist_len: 459
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 13
+
+    - name: t12
+      isBase: false
+      hist_len: 690
+      num_pred_entries_log: 10
+      num_hyst_entries_log: 0
+      tag_width: 14

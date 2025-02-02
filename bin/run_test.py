@@ -1,30 +1,54 @@
+from tagebuilder_core import treader
+from tagebuilder_core import tage_predictor
+from tagebuilder_core import legacy_settings
+
 import numpy as np
-import treader
-import tagebuilder
 import json
-import settings
 import time
+import logging
 
 import cProfile
 import pstats
 
 from datetime import datetime
 
+legacy_settings.READ_BATCH = True
+# Get the current time
+current_time = datetime.now()
+
+# Format the time as a string suitable for file names
+file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+configname = legacy_settings.SPEC_NAME
+
+# the root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(f"{legacy_settings.REPORT_DIR}/logger/logger_{configname}_{file_name_time}.log"),
+    ],
+)
 
 def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
+    mainlogger = logging.getLogger(f"{__name__}")
     out = ''
     current_time = time.time()
     last_progress_time = current_time
     filelist = [
-        ('DIST-FP-1', settings.TRACE_DIR + 'DIST-FP-1'),
-        # ('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
-        # ('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
-        # ('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
-        # ('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
-        # ('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
-        # ('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
-        # ('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
+        ('DIST-FP-1', legacy_settings.TRACE_DIR + 'DIST-FP-1'),
+        #('DIST-FP-2', settings.TRACE_DIR + 'DIST-FP-2'),
+        #('DIST-INT-1', settings.TRACE_DIR + 'DIST-INT-1'),
+        #('DIST-INT-2', settings.TRACE_DIR + 'DIST-INT-2'),
+        #('DIST-MM-1', settings.TRACE_DIR + 'DIST-MM-1'),
+        #('DIST-MM-2', settings.TRACE_DIR + 'DIST-MM-2'),
+        #('DIST-SERV-1', settings.TRACE_DIR + 'DIST-SERV-1'),
+        #('DIST-SERV-2', settings.TRACE_DIR + 'DIST-SERV-2')
     ]
+
+    mainlogger.info('Tested traces:\n'+'\n'.join([f"('{name}', {path})" for name, path in filelist]))
+    
     with open(spec_name, 'r') as f:
         spec = json.load(f)
 
@@ -32,7 +56,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
     sum_mispKPI = 0
     num_tests = len(filelist)
 
-    predictor = tagebuilder.TAGEPredictor()
+    predictor = tage_predictor.TAGEPredictor()
     predictor.init_tables(spec)
     out += predictor.sizelog
 
@@ -42,7 +66,7 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
         instr_cnt = 0
         while True:
             current_time = time.time()
-            if settings.READ_BATCH:
+            if legacy_settings.READ_BATCH:
                 b_size = 1024
                 result = reader.read_branch_batch(b_size)
                 if result == -1:
@@ -100,47 +124,17 @@ def main(NUM_INSTR = -1, spec_name = "tage_custom.json"):
 
 if __name__ == "__main__":
 
-    settings.READ_BATCH = True
-    # Get the current time
-    current_time = datetime.now()
-
-    # Format the time as a string suitable for file names
-    file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
-
-    with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_BATCH.txt', 'w') as f:
+    with open(f'{legacy_settings.REPORT_DIR}{configname}_{file_name_time}.txt', 'w') as f:
         profiler = cProfile.Profile()
         profiler.enable()
         
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_l.json")
+        out = main(NUM_INSTR = -1, spec_name= legacy_settings.SPEC_DIR+configname+".json")
         
         profiler.disable()
 
         f.write(out)
 
-    with open(f"profile_results_{file_name_time}_BATCH.txt", "w") as f:
-        stats = pstats.Stats(profiler, stream=f)
-        stats.sort_stats("cumulative")  # Sort by cumulative time
-        stats.print_stats()
-    
-
-    settings.READ_BATCH = False
-    # Get the current time
-    current_time = datetime.now()
-
-    # Format the time as a string suitable for file names
-    file_name_time = current_time.strftime("%Y%m%d_%H%M%S")
-
-    with open(f'{settings.REPORT_DIR}TAGE_CUSTOM_{file_name_time}_NOBATCH.txt', 'w') as f:
-        profiler = cProfile.Profile()
-        profiler.enable()
-        
-        out = main(NUM_INSTR = -1, spec_name= settings.SPEC_DIR+"tage_l.json")
-        
-        profiler.disable()
-
-        f.write(out)
-
-    with open(f"profile_results_{file_name_time}_NOBATCH.txt", "w") as f:
+    with open(f"{legacy_settings.REPORT_DIR}profiled/profile_results_{configname}_{file_name_time}.txt", "w") as f:
         stats = pstats.Stats(profiler, stream=f)
         stats.sort_stats("cumulative")  # Sort by cumulative time
         stats.print_stats()
