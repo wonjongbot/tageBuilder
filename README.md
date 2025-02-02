@@ -104,7 +104,9 @@ tables:
 
 ## Data Input
 
-The tool accepts branch trace files in the BT9 format, compatible with the CBP2016 traces. check 4) in Installation / Initial setup for downloading the dataset. 
+The tool accepts branch trace files in the BT9 format, compatible with the CBP2016 traces. 
+
+> check 4) in Installation / Initial setup for downloading the dataset. 
 
 
 ## Output
