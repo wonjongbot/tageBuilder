@@ -186,8 +186,7 @@ TAGEbuilder produces several outputs:
 
 - [ ] Clean up code (remove unoptimized reader and predictor code)
 - [ ] Additional visualizations (e.g., transition count vs. accuracy heatmap)
-- [ ] Enhanced misprediction confidence metrics
-- [ ] HTML report generation for easier navigation and more interactive analysis experience
+- [ ] HTML report generation for easier navigation via web UI and more interactive analysis experience
 
 ## Contributing
 
