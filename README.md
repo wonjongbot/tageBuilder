@@ -151,18 +151,19 @@ The tool accepts branch trace files in the BT9 format, compatible with the CBP20
 > check `docs/example_sim_output.tar.gz` for output example.
 
 TAGEbuilder produces several outputs:
-- Graphs for MPKI and accuracy
 - Visualizations for memory usage by predictor components
-- Statistics on mispredictions per branch PC and branch class analysis
-- CSV files summarizing simulation results (per predictor, per branch PC address, general MPKI/accuracy)
 
 <p align="center">
     <img src="docs/img/PLOT_STORAGE.png" width="700px" />
 </p>
 
+- Graphs for MPKI and accuracy
+
 <p align="center">
     <img src="docs/img/PLOT_OVERALL_MPKI_ACCURCY.png" width="700px" />
 </p>
+
+- Statistics on mispredictions per branch PC and branch class analysis
 
 <p align="center">
     <img src="docs/img/PLOT_PER_CLASS_STAT.png" width="700px" />
@@ -175,6 +176,7 @@ TAGEbuilder produces several outputs:
 <p align="center">
     <img src="docs/img/PLOT_TOP_N_SUM.png" width="700px" />
 </p>
+- CSV files summarizing simulation results (per predictor, per branch PC address, general MPKI/accuracy)
 
 ## Future Plans
 
