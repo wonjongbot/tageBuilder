@@ -188,6 +188,16 @@ TAGEbuilder produces several outputs:
 - [ ] Additional visualizations (e.g., transition count vs. accuracy heatmap)
 - [ ] HTML report generation for easier navigation via web UI and more interactive analysis experience
 
+## Resources
+
+- [A case for (partially) TAgged GEometric history length branch prediction](https://jilp.org/vol8/v8paper1.pdf)
+
+- [Why TAGE is the best](https://comparch.net/2013/06/30/why-tage-is-the-best/)
+
+- [L-TAGE submission code to the 2nd CBP](https://www.irisa.fr/caps/projects/Architecture/L-TAGE.h)
+
+- [ craymichael/CBP-16-Simulation](https://github.com/craymichael/CBP-16-Simulation)
+
 ## Contributing
 
 Always open for helping hands! If anyone have ideas for improvements, please do a pull request or contact me.
