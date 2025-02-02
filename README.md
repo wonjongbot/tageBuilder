@@ -147,7 +147,7 @@ tables:
 
 The tool accepts branch trace files in the BT9 format, compatible with the CBP2016 traces. 
 
-> check [Installation / Initial setup](#Installation-/-Initial-setup) for downloading the dataset. 
+> check [Installation / Initial setup](#installation--initial-setup) for downloading the dataset. 
 
 
 ## Output
