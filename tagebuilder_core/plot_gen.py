@@ -294,6 +294,5 @@ def plot_mpki_accuracy(df, output_image_path):
     plt.title("Branch Prediction Accuracy and MPKI")
 
     # Save the plot as an image
-    #output_image_path = "simulation_dual_axis_plot.png"  # Replace with your desired file name
     plt.savefig(output_image_path, dpi=300)
     
