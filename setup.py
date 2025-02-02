@@ -4,19 +4,21 @@ import os
 
 # get current working directory
 cwd = os.getcwd()
+extracted_dir = ''
 
-# CBP env folder (from craymichael/CBP-16-Simulation @ github)
-cbp_url = 'https://drive.google.com/drive/folders/1VAdmqdOEFLvnRKkQQidxvGJA_C6S2RWo?usp=drive_link'
-gdown.download_folder(cbp_url, quiet=False, use_cookies=False)
+# UNCOMMENT HERE TO automatically download traces
+# # CBP env folder (from craymichael/CBP-16-Simulation @ github)
+# cbp_url = 'https://drive.google.com/drive/folders/1VAdmqdOEFLvnRKkQQidxvGJA_C6S2RWo?usp=drive_link'
+# gdown.download_folder(cbp_url, quiet=False, use_cookies=False)
 
 
-# Extract evaluation traces
-evaltraces_dir = os.path.join(cwd, 'CBP16 Data/evaluationTraces.Final.tar')
-extracted_dir = os.path.join(cwd, 'CBP16 Data/')
+# # Extract evaluation traces
+# evaltraces_dir = os.path.join(cwd, 'CBP16 Data/evaluationTraces.Final.tar')
+# extracted_dir = os.path.join(cwd, 'CBP16 Data/')
 
-with tarfile.open(evaltraces_dir, "r:") as tar:
-    # tar.extractall(path=extracted_dir)
-    print(f'Trace extracted to {extracted_dir}')
+# with tarfile.open(evaltraces_dir, "r:") as tar:
+#     # tar.extractall(path=extracted_dir)
+#     print(f'Trace extracted to {extracted_dir}')
 
 
 # setup directories used in sim
@@ -29,7 +31,7 @@ settingfile_dir = os.path.join(cwd, 'tagebuilder_core/settings.py')
 settings_components = {
     'CBP16_TRACE_DIR': os.path.join(extracted_dir, 'evaluationTraces'),
     'REPORT_DIR': os.path.join(cwd, 'reports'),
-    'SPEC_DIR': os.path.join(cwd, 'configs')
+    'SPEC_DIR': os.path.join(cwd, 'configs'),
 }
 
 with open(settingfile_dir, 'w') as f:
