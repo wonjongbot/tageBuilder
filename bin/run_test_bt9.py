@@ -413,11 +413,13 @@ def cli_progbar(sim_metadatas, sim_list, prog_queue):
 def main_parallel():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Tagebuilder!")
-    parser.add_argument("-spec", type=str, help="spec name")
+    parser.add_argument("-s", "--spec", type=str, help="spec name")
+    parser.add_argument("-l", "--sim_list", type=str, help="Path to YAML")
     #parser.add_argument("-o", "--optimized", action="store_true", help="Use optimzed tage sim")
     
     args = parser.parse_args()
     spec = args.spec
+    sim_list_path = args.sim_list
     #optimized = args.optimized
     print(args)
 
@@ -427,24 +429,30 @@ def main_parallel():
     file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
 
     sim_report_root = os.path.join(settings.REPORT_DIR, f'sim_run_{file_name_time}')
-    sim_list = [
-        'SHORT_MOBILE-1',
-        'SHORT_MOBILE-2',
-        'SHORT_MOBILE-3',
-        'SHORT_MOBILE-4',
-        'LONG_MOBILE-1',
-        'LONG_MOBILE-2',
-        # 'LONG_MOBILE-3',
-        # 'LONG_MOBILE-4',
-        # 'SHORT_SERVER-1',
-        # 'SHORT_SERVER-2',
-        # 'SHORT_SERVER-3',
-        # 'SHORT_SERVER-4',
-        # 'LONG_SERVER-1',
-        # 'LONG_SERVER-2',
-        # 'LONG_SERVER-3',
-        # 'LONG_SERVER-4',
-    ]
+    
+    with open(sim_list_path, 'r') as file:
+        sim_list_yaml = yaml.safe_load(file)
+    
+    sim_list = sim_list_yaml.get('sim_list', [])
+
+    # sim_list = [
+    #     'SHORT_MOBILE-1',
+    #     'SHORT_MOBILE-2',
+    #     'SHORT_MOBILE-3',
+    #     'SHORT_MOBILE-4',
+    #     'LONG_MOBILE-1',
+    #     'LONG_MOBILE-2',
+    #     # 'LONG_MOBILE-3',
+    #     # 'LONG_MOBILE-4',
+    #     # 'SHORT_SERVER-1',
+    #     # 'SHORT_SERVER-2',
+    #     # 'SHORT_SERVER-3',
+    #     # 'SHORT_SERVER-4',
+    #     # 'LONG_SERVER-1',
+    #     # 'LONG_SERVER-2',
+    #     # 'LONG_SERVER-3',
+    #     # 'LONG_SERVER-4',
+    # ]
     subdirs = prepare_sim_folder(sim_report_root, sim_list)
     
     manager = multiprocessing.Manager()
