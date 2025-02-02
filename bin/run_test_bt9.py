@@ -95,9 +95,6 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     out = {}
     fileinfo = (test_name, os.path.join(settings.CBP16_TRACE_DIR, test_name + '.bt9.trace.gz'))
 
-    start_wall = time.time()
-    start_resources = resource.getrusage(resource.RUSAGE_SELF)
-
     out['sim_id'] = 0
     out['timestamp'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     out['config'] = {}
@@ -124,6 +121,9 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
     debug = 0
 
     expected_confidence_cols = [f'conf_{i}' for i in range(-4,4)]
+    #prog_queue.put((sim_id, "start"))
+    start_wall = time.time()
+    start_resources = resource.getrusage(resource.RUSAGE_SELF)
     while True:
         # read batch by default
         b_size = 1_000_000
@@ -174,6 +174,41 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         unique_addr_false, false_counts = np.unique(addr_false, return_counts=True)
         reader.addr_scoreboard_df.loc[unique_addr_false, 'num_incorrect_preds'] += false_counts
 
+        # calculate transitions
+        addrs = reader.br_infoArr['addr']
+        takens = reader.br_infoArr['taken']
+        
+        # sort by address, use mergesort(stable) to preserve ordering for same addrs
+        order = np.argsort(addrs, kind='mergesort')
+        addrs = addrs[order]
+        takens = takens[order]
+
+        # boundaries for each addrs
+        group_starts = np.concatenate(([0], np.where(np.diff(addrs) != 0 )[0] + 1))
+        group_ends = np.concatenate((group_starts[1:], [len(addrs)]))
+
+        # count transitions for each address
+        if len(takens) > 1:
+            diffs = (np.diff(takens) != 0).astype(np.int64)
+        else:
+            diffs = np.array([], dtype=np.int64)
+        
+        # cumulative sums to count transitions per group
+        cumsum_diffs = np.concatenate(([0], np.cumsum(diffs)))
+        group_transitions = cumsum_diffs[group_ends - 1] - cumsum_diffs[group_starts]
+
+        # calculate total number of transitions (including previous batch's last value)
+        group_addrs = addrs[group_starts]
+        prev_takens = reader.addr_scoreboard_df.loc[group_addrs, 'prev_taken'].to_numpy()
+
+        first_transitions = (prev_takens != takens[group_starts]).astype(np.int8)
+        total_transitions = group_transitions + first_transitions
+        
+        # update pandas dataframe
+        last_takens = takens[group_ends - 1]
+        reader.addr_scoreboard_df.loc[group_addrs, 'trans'] += total_transitions
+        reader.addr_scoreboard_df.loc[group_addrs, 'prev_taken'] = last_takens
+        
         # Per predictor stats TODO: do everything vectorized? is this possible?
         # for id in range(predictor.num_tables):
         #     result_matching_id_flag = (results['pid'] == id)
@@ -367,6 +402,8 @@ def cli_progbar(sim_metadatas, sim_list, prog_queue):
             prog_bars[sim_id].n = prog_bars[sim_id].total
             prog_bars[sim_id].refresh()  # Ensure it shows 100% since that's prettier
             overall_prog.update(1)
+        # elif progress == "start":
+        #     prog_bars[sim_id].start_t = time.time()
         else:
             prog_bars[sim_id].n = progress
             prog_bars[sim_id].refresh()
@@ -392,11 +429,11 @@ def main_parallel():
     sim_report_root = os.path.join(settings.REPORT_DIR, f'sim_run_{file_name_time}')
     sim_list = [
         'SHORT_MOBILE-1',
-        # 'SHORT_MOBILE-2',
-        # 'SHORT_MOBILE-3',
-        # 'SHORT_MOBILE-4',
-        # 'LONG_MOBILE-1',
-        # 'LONG_MOBILE-2',
+        'SHORT_MOBILE-2',
+        'SHORT_MOBILE-3',
+        'SHORT_MOBILE-4',
+        'LONG_MOBILE-1',
+        'LONG_MOBILE-2',
         # 'LONG_MOBILE-3',
         # 'LONG_MOBILE-4',
         # 'SHORT_SERVER-1',

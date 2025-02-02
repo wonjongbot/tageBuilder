@@ -169,7 +169,9 @@ class BT9Reader:
                 self.addr_scoreboard_df = pd.DataFrame({
                     'num_correct_preds': 0,
                     'num_incorrect_preds': 0,
-                    'class': classes
+                    'class': classes,
+                    'trans': 0,
+                    'prev_taken': 0
                 }, index = addrs)
                 self.addr_scoreboard_df.index.name = 'br_addr'
                 self.logger.info(self.addr_scoreboard_df)
