@@ -4,6 +4,8 @@
 </p>
 tageBuilder is a Python-based simulator and performance evaluation tool for TAGE-like branch predictors. It offers configurable parameters for modeling TAGE predictors and is optimized for performance with Numba and NumPy. Predictor performance can be evaluated with 200+ branch trace datasets from the 2016 Championship Branch Prediction (CBP2016) environment and generates detailed performance metrics.
 
+> TAGE predictors are state-of-the-art branch predictor design. If you are curious about their details, check out [resources](#resources).
+
 ## Features
 
 - **Customizable Predictor Model:**  
