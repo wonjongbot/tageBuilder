@@ -202,6 +202,8 @@ TAGEbuilder produces several outputs:
 
 - [ craymichael/CBP-16-Simulation](https://github.com/craymichael/CBP-16-Simulation)
 
+- [UofWisco Advanced Branch Prediction Lecture](https://ece752.ece.wisc.edu/lect09-adv-branch-prediction.ppt)
+
 ## Contributing
 
 Always open for helping hands! If anyone have ideas for improvements, please do a pull request or contact me.
