@@ -11,6 +11,8 @@ tageBuilder is a Python-based simulator and performance evaluation tool for TAGE
 - **Customizable Predictor Model:**  
   Configure aspects such as tagged components (number, history length, tag width) and base predictor settings (prediction bits, hysteresis bits) via a YAML spec file.
 
+> The tool does not model non-tagged components (except for the base predictor) such as the loop predictor and the statistical corrector.
+
   A predictor with 12 tagged components with total space of 212Kb scored accuracy of 95%> and MPKI of 1~3 for most traces.
 
 - **Optimized Simulation:**  
