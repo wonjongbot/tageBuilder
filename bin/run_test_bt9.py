@@ -1,6 +1,5 @@
 import yaml
 from tagebuilder_core import bt9reader
-from tagebuilder_core import tage_predictor
 from tagebuilder_core import settings
 from tagebuilder_core import tage_optimized
 from tagebuilder_core import plot_gen
@@ -22,6 +21,7 @@ import pstats
 
 from datetime import datetime
 
+# Define iteration flags for progress reporting based on branch instruction counts
 ITER_1k =   1000
 ITER_10k =  10_000
 ITER_100k = 100_000
@@ -51,6 +51,13 @@ iterflags = (
     
 
 def updateMPKI(reader):
+    """
+    Update the MPKI (mispredictions per thousand instructions) and accuracy metrics
+    in the reader's report.
+    
+    Args:
+        reader (BT9Reader): The trace reader instance with performance report.
+    """
     curr_inst_cnt = reader.report['current_instruction_count']
     curr_br_cnt = reader.report['current_branch_instruction_count']
     reader.report['current_accuracy'] = reader.report['correct_predictions'] / curr_br_cnt
@@ -60,11 +67,21 @@ def updateMPKI(reader):
 # cool way to show stats -- inspired by CBP16 eval
 #   modified to store dataframe for visualization
 def statHeartBeat(reader):
+    """
+    Update performance statistics and log progress when certain branch instruction
+    counts are reached.
+    
+    Args:
+        reader (BT9Reader): The trace reader instance.
+    """
+    # Get the current branch instruction count
     iter = reader.report['current_branch_instruction_count']
     updateMPKI(reader)
+    # Record statistics for plotting and later analysis
     reader.data['br_inst_cnt'].append(reader.report['current_branch_instruction_count'])
     reader.data['accuracy'].append(reader.report['current_accuracy'])
     reader.data['mpki'].append(reader.report['current_mpki'])
+    # Log progress when the count matches any of the iteration flags
     if iter in iterflags:
         #updateMPKI(reader)
         progressout = 'PROGRESS\n'
@@ -74,6 +91,16 @@ def statHeartBeat(reader):
         
 
 def setup_logger(sim_id, sim_output_dir):
+    """
+    Set up a logger for a specific simulation process.
+    
+    Args:
+        sim_id (int): Simulation identifier.
+        sim_output_dir (str): Directory where log files will be stored.
+    
+    Returns:
+        logger (logging.Logger): Configured logger instance.
+    """
     logger = logging.getLogger(f"simulation_{sim_id}")
     logger.setLevel(logging.INFO)
 
@@ -82,7 +109,7 @@ def setup_logger(sim_id, sim_output_dir):
     fh = logging.FileHandler(log_file)
     fh.setLevel(logging.INFO)
 
-    # Log format
+    # Define log format
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
 
@@ -92,47 +119,75 @@ def setup_logger(sim_id, sim_output_dir):
     return logger
 
 def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id = 0, prog_queue=None, logger = None):
+    """
+    Run a single simulation for a given trace and predictor specification.
+    
+    This function sets up the predictor, loads the trace file, processes branch batches,
+    updates performance statistics, and returns simulation outputs.
+    
+    Args:
+        spec_name (str): Name of the predictor specification.
+        test_name (str): Name of the trace test.
+        sim_id (int): Simulation ID.
+        prog_queue (multiprocessing.Queue): Queue for reporting progress.
+        logger (logging.Logger): Logger instance for logging messages.
+    
+    Returns:
+        tuple: A tuple containing:
+            - out (dict): Performance report and configuration details.
+            - df_overall_mpki (DataFrame): Overall MPKI and accuracy data.
+            - addr_scoreboard_df (DataFrame): Per-address statistics.
+            - predictor_scoreboard_df (DataFrame): Per-predictor statistics.
+    """
     out = {}
+    # Construct the trace file information tuple
     fileinfo = (test_name, os.path.join(settings.CBP16_TRACE_DIR, test_name + '.bt9.trace.gz'))
 
+    # Store simulation configuration and timestamp details
     out['sim_id'] = 0
     out['timestamp'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    out['config'] = {}
-    out['config']['predictor'] = spec_name
-    out['config']['spec_file_dir'] = os.path.join(settings.SPEC_DIR, spec_name + '.yaml')
-    out['config']['trace'] = fileinfo[0]
-    out['config']['trace_file_dir'] = fileinfo[1]
+    out['config'] = {
+        'predictor': spec_name,
+        'spec_file_dir': os.path.join(settings.SPEC_DIR, spec_name + '.yaml'),
+        'trace': fileinfo[0],
+        'trace_file_dir': fileinfo[1]
+    }
     
+    # Load predictor specification from YAML file
     with open(out['config']['spec_file_dir'], 'r') as f:
         spec = yaml.safe_load(f)
 
+    # Initialize the TAGE predictor with the given specification
     predictor = tage_optimized.TAGEPredictor(spec, logger)
 
+    # Save storage report details from the predictor
     out['storage_report'] = {}
     for k,v in predictor.storage_report.items():
         out['storage_report'][k] = v
 
     logger.info(f'TESTING {fileinfo[0]} :: {fileinfo[1]}')
 
+    # Initialize the trace reader for the BT9 file
     reader = bt9reader.BT9Reader(fileinfo[1], logger)
     reader.init_tables()
     reader.init_predictor_scoreboard(predictor.num_tables)
 
-    debug = 0
+    debug = 0  # Counter for debugging incorrect predictions (debug purposes)
 
     expected_confidence_cols = [f'conf_{i}' for i in range(-4,4)]
-    #prog_queue.put((sim_id, "start"))
     start_wall = time.time()
     start_resources = resource.getrusage(resource.RUSAGE_SELF)
+    
+    # Main simulation loop: process branch batches until EOF or incomplete file
     while True:
-        # read batch by default
+        # Read a batch of branch instructions (default batch size: 1,000,000)
         b_size = 1_000_000
         result = reader.read_branch_batch(b_size)
         if result == -1:
             logger.info('INCOMPLETE FILE DETECTED')
             break
         
-        #print(reader.br_infoArr)
+        # Run the TAGE prediction and update batch process on the branch batch
         results = tage_optimized.make_pred_n_update_batch(
             reader.br_infoArr,
             predictor.num_tables,
@@ -152,42 +207,33 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
             predictor.rand_array
             )
 
-        # Per Address stats
-        # mask correct and incorrect predictions
+        # --- Per Address Statistics Update ---
+        # Determine correct and incorrect predictions by comparing with trace data
         isCorrects = results['pred'] == reader.br_infoArr['taken']
         results_true = (isCorrects == 1)
         results_false = ~results_true
 
-        # grab index from masks
-        #idx_true = np.flatnonzero(results_true)
-        #idx_false = np.flatnonzero(results_false)
-
-        # grab address using index
+        # Update per-address scoreboard for correct predictions (vectorized)
         addr_true = reader.br_infoArr['addr'][results_true]
-        addr_false = reader.br_infoArr['addr'][results_false]
-
-        # update per address scoreboard (vectorized)
-        # logger.info(reader.addr_scoreboard_df.loc[addr_true, 'num_correct_preds'])
         unique_addr_true, true_counts = np.unique(addr_true, return_counts=True)
         reader.addr_scoreboard_df.loc[unique_addr_true, 'num_correct_preds'] += true_counts
-        # logger.info(reader.addr_scoreboard_df.loc[addr_true, 'num_correct_preds'])
+        
+        # Update per-address scoreboard for incorrect predictions
+        addr_false = reader.br_infoArr['addr'][results_false]
         unique_addr_false, false_counts = np.unique(addr_false, return_counts=True)
         reader.addr_scoreboard_df.loc[unique_addr_false, 'num_incorrect_preds'] += false_counts
 
-        # calculate transitions
+        # --- Update Transition Statistics for Each Address ---
         addrs = reader.br_infoArr['addr']
         takens = reader.br_infoArr['taken']
-        
-        # sort by address, use mergesort(stable) to preserve ordering for same addrs
+        # Sort addresses to group same addresses together; using stable sort
         order = np.argsort(addrs, kind='mergesort')
         addrs = addrs[order]
         takens = takens[order]
-
-        # boundaries for each addrs
+        # Identify boundaries where addresses change
         group_starts = np.concatenate(([0], np.where(np.diff(addrs) != 0 )[0] + 1))
         group_ends = np.concatenate((group_starts[1:], [len(addrs)]))
-
-        # count transitions for each address
+        # Count transitions between taken and not-taken within each group
         if len(takens) > 1:
             diffs = (np.diff(takens) != 0).astype(np.int64)
         else:
@@ -197,29 +243,19 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         cumsum_diffs = np.concatenate(([0], np.cumsum(diffs)))
         group_transitions = cumsum_diffs[group_ends - 1] - cumsum_diffs[group_starts]
 
-        # calculate total number of transitions (including previous batch's last value)
+        # Account for transition from previous batch's last prediction
         group_addrs = addrs[group_starts]
         prev_takens = reader.addr_scoreboard_df.loc[group_addrs, 'prev_taken'].to_numpy()
 
         first_transitions = (prev_takens != takens[group_starts]).astype(np.int8)
         total_transitions = group_transitions + first_transitions
         
-        # update pandas dataframe
+        # Update the scoreboard with transition counts and last seen outcome
         last_takens = takens[group_ends - 1]
         reader.addr_scoreboard_df.loc[group_addrs, 'trans'] += total_transitions
         reader.addr_scoreboard_df.loc[group_addrs, 'prev_taken'] = last_takens
         
-        # Per predictor stats TODO: do everything vectorized? is this possible?
-        # for id in range(predictor.num_tables):
-        #     result_matching_id_flag = (results['pid'] == id)
-        #     idx_matching_id = np.flatnonzero(result_matching_id_flag)
-        #     # filter out for predictor in this iteration
-        #     idx_true_per_id = np.intersect1d(idx_matching_id, idx_true)
-        #     idx_false_per_id = np.intersect1d(idx_matching_id, idx_false)
-        #     reader.predictor_scoreboard_df.loc[id, 'num_correct_preds'] += len(idx_true_per_id)
-        #     reader.predictor_scoreboard_df.loc[id, 'num_incorrect_preds'] += len(idx_false_per_id)
-
-        # per predictor stats (holy vectorization!)
+        # --- Per Predictor Statistics Update (Vectorized) ---
         # mispredictions and correct predictions
         unique_pid_true, pid_counts_true = np.unique(results['pid'][results_true], return_counts=True)
         unique_pid_false, pid_counts_false = np.unique(results['pid'][results_false], return_counts=True)
@@ -227,7 +263,7 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         reader.predictor_scoreboard_df.loc[unique_pid_true, 'num_correct_preds'] += pid_counts_true
         reader.predictor_scoreboard_df.loc[unique_pid_false, 'num_incorrect_preds'] += pid_counts_false
         
-        # alternate / main predictions
+        # Track usage of alternate and main predictors
         is_alts = (results['is_alt'] == 1)
         is_mains = ~is_alts
 
@@ -237,95 +273,81 @@ def run_single_sim(spec_name = "tage_sc_l", test_name = "SHORT-MOBILE-1", sim_id
         reader.predictor_scoreboard_df.loc[unique_pid_alt, 'used_as_alt'] += pid_counts_alt
         reader.predictor_scoreboard_df.loc[unique_pid_main, 'used_as_main'] += pid_counts_main
 
-        # confidence among predictions (use pandas crosstab for funzies)
+        # Update confidence statistics using a crosstab for mispredictions
         mispred_df = pd.DataFrame(results[results_false])
         confidence_crosstab = pd.crosstab(mispred_df['pid'], mispred_df['ctr'])
         confidence_crosstab.columns = [f'conf_{col}' for col in confidence_crosstab.columns]
         confidence_crosstab = confidence_crosstab.reindex(columns=expected_confidence_cols, fill_value=0)
         reader.predictor_scoreboard_df = reader.predictor_scoreboard_df.add(confidence_crosstab, fill_value=0)
-        # logger.info(confidence_crosstab)
+        
+        # Update debug counter for incorrect predictions
+        # debug += len(addr_false)
 
-
-        debug += len(addr_false)
-
-        # update global statistics
+        # --- Global Statistics Update ---
         reader.report['correct_predictions'] += len(addr_true)
         reader.report['incorrect_predictions'] += len(addr_false)
         reader.report ['current_branch_instruction_count'] += (len(isCorrects))
         reader.report['current_instruction_count'] += np.sum(reader.br_infoArr['inst_cnt'])
 
-        # for i, r in enumerate(results):
-        #     # reader.update_stats(bool(r)) # remove function call overhead
-        #     if bool(r):
-        #         reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_correct_preds'] += 1
-        #         # reader.report['correct_predictions'] += 1
-        #     else:
-        #         reader.addr_scoreboard[reader.br_infoArr[i]['addr']]['num_incorrect_preds'] += 1
-        #         # reader.report['incorrect_predictions'] += 1
-        #     # reader.report['current_branch_instruction_count'] += 1
-        #     # reader.report['current_instruction_count'] += (1 + int(reader.br_infoArr[i]['inst_cnt']))
-        
+        # Report progress via the shared queue
         prog_queue.put((sim_id, reader.report['current_branch_instruction_count']))
         statHeartBeat(reader)
         if result == 1:
-            #reader.report['current_branch_instruction_count'] += 1
+            # End simulation when EOF is reached
             reader.report['is_sim_over'] = True
             logger.info('SIM IS OVER')
             prog_queue.put((sim_id, "done"))
             break
     
+    # Ensure simulation ended properly
     assert(reader.report['is_sim_over'])
 
-    logger.info(debug)
+    # logger.info(debug)
 
     reader.finalize_stats()
-
+    
     end_wall = time.time()
     end_resources = resource.getrusage(resource.RUSAGE_SELF)
 
+    # Calculate simulation timing metrics
     real_time = end_wall - start_wall
     user_time = end_resources.ru_utime - start_resources.ru_utime
     sys_time  = end_resources.ru_stime - start_resources.ru_stime
-    time_report = {}
-    time_report['real'] = real_time
-    time_report['user'] = user_time
-    time_report['sys'] = sys_time
-    time_report['sim_throughput'] = reader.report['current_branch_instruction_count']/real_time
+    time_report = {
+        'real': real_time,
+        'user': user_time,
+        'sys': sys_time,
+        'sim_throughput': reader.report['current_branch_instruction_count'] / real_time
+    }
 
-    #addr_scoreboard_sorted = dict(sorted(reader.addr_scoreboard.items(), key=lambda x: x[1]['num_incorrect_preds'], reverse=True))
-
-    out['perf_report'] = {}
+    out['perf_report'] = {k: v for k, v in reader.report.items()}
     
-    for k,v in reader.report.items():
-        out['perf_report'][k] = v
-    
-    # # find a better way to do this
-    # top_n_offender = {}
-    # i = 0
-    # for k,v in addr_scoreboard_sorted.items():
-    #     if i > 10:
-    #         break
-    #     top_n_offender[hex(k)] = v
-    #     i += 1
-    #logger.info(top_n_offender)
-    #logger.info(reader.addr_scoreboard)
+    # Reorder predictor scoreboard columns as expected
     reader.predictor_scoreboard_df = reader.predictor_scoreboard_df[reader.predictor_scoreboard_structure]
     logger.info(reader.predictor_scoreboard_df)
-    # out['perf_report']['top_n_offender'] = top_n_offender    
     out['time'] = time_report
 
+    # Prepare overall MPKI and per-address/predictor data for output and plotting
     df_overall_mpki = pd.DataFrame(reader.data)
     logger.info(reader.addr_scoreboard_df)
-    #df_per_addr_stats = pd.DataFrame.from_dict(reader.addr_scoreboard, orient='index')
-    #reader.addr_scoreboard_df.index.name = 'br_addr'
 
     return out, df_overall_mpki, reader.addr_scoreboard_df, reader.predictor_scoreboard_df
 
 def prepare_sim_folder(base_folder_dir, subfolders):
+    """
+    Create the simulation output folder structure.
+    
+    Args:
+        base_folder_dir (str): Base directory for simulation outputs.
+        subfolders (list): List of subfolder names to create.
+    
+    Returns:
+        dict: Mapping of subfolder names to their full paths.
+    """
     ret = {}
-    # create base folder
+    # Create base folder if it does not exist
     os.makedirs(base_folder_dir, exist_ok=True)
-    # create subfolders
+    # Create each subfolder and store its path in the return dictionary
     for folder in subfolders:
         folder_dir = os.path.join(base_folder_dir, folder)
         ret[folder] = folder_dir
@@ -333,6 +355,18 @@ def prepare_sim_folder(base_folder_dir, subfolders):
     return ret
 
 def np_to_json_serialize(obj):
+    """
+    JSON serializer for NumPy data types.
+    
+    Args:
+        obj: Object to be serialized.
+    
+    Returns:
+        Serialized Python primitive for JSON conversion.
+    
+    Raises:
+        TypeError: If the type is not serializable.
+    """
     if isinstance(obj, np.integer):
         return int(obj)
     if isinstance(obj, np.floating):
@@ -343,7 +377,14 @@ def np_to_json_serialize(obj):
 
 def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     """
-    wrapper function to write sim outputs and graphics
+    Wrapper function to run a simulation and save the outputs and plots.
+    
+    Args:
+        sim_dir (str): Simulation output directory.
+        sim_name (str): Name of the simulation.
+        spec (str): Predictor specification name.
+        sim_id (int): Simulation ID.
+        prog_queue (multiprocessing.Queue): Queue for progress updates.
     """
     filepath = os.path.join(sim_dir, f'SIM_RESULT_{spec}_{sim_name}.json')
 
@@ -351,14 +392,17 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     logger.setLevel(logging.INFO)
     logger.info(f"Simulation {sim_id} started.")
 
+    # Run the simulation
     out, df_overall_mpki, df_per_br_info, df_predictor_scoreboard = run_single_sim(spec, sim_name, sim_id, prog_queue, logger)
-    # get n most incorrect predictions
+    # Get top 20 addresses with most incorrect predictions for reporting
     df_top_n_offender = df_per_br_info.nlargest(20, 'num_incorrect_preds')
     out['perf_report']['top_n_offender'] = df_top_n_offender.to_dict(orient = 'index')
 
+    # Save simulation result as JSON
     with open(filepath, 'w') as f:
         json.dump(out, f, indent = 4, default = np_to_json_serialize)
 
+    # Save performance data as CSV files
     df_overall_path = os.path.join(sim_dir, f'OVERALL_DATA.csv')
     df_per_branch_path = os.path.join(sim_dir, f'PER_BRANCH_DATA.csv')
     df_predictor_path = os.path.join(sim_dir, f'PER_PREDICTOR_DATA.csv')
@@ -373,7 +417,7 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     df_per_br_info.to_csv(df_per_branch_path, index = True)
     df_predictor_scoreboard.to_csv(df_predictor_path,index = True)
     
-    # plot results
+    # Generate plots for the simulation results
     plot_gen.plot_mpki_accuracy(df_overall_mpki, img_path)
     plot_gen.plot_storage_bar(out['storage_report'], img_storage_path, logger)
     plot_gen.plot_top_n_addr(out['perf_report']['top_n_offender'], out['perf_report']['incorrect_predictions'], img_top_n_addr)
@@ -381,14 +425,26 @@ def run_sim_wrapper(sim_dir, sim_name, spec, sim_id, prog_queue):
     plot_gen.plot_per_class(df_per_br_info, img_per_class)
 
 def cli_progbar(sim_metadatas, sim_list, prog_queue):
+    """
+    Display progress bars for each simulation and overall progress using tqdm.
+    
+    Args:
+        sim_metadatas (list): List of metadata dictionaries from traces.
+        sim_list (list): List of simulation names.
+        prog_queue (multiprocessing.Queue): Queue receiving progress updates.
+    """
     prog_bars = {}
     overall_prog = tqdm(
         total=len(sim_metadatas), desc="Overall Progress", position=len(sim_list), leave=True 
     )
 
+    # Create individual progress bars for each simulation
     for sim_id, metadata in enumerate(sim_metadatas):
         prog_bars[sim_id] = tqdm(
-            total=int(metadata['branch_instruction_count']), desc=f"{sim_list[sim_id]}", position=sim_id, leave=True 
+            total=int(metadata['branch_instruction_count']), 
+            desc=f"{sim_list[sim_id]}", 
+            position=sim_id, 
+            leave=True 
         )
     
     while True:
@@ -398,12 +454,10 @@ def cli_progbar(sim_metadatas, sim_list, prog_queue):
         sim_id, progress = msg
 
         if progress == "done":
-            #prog_bars[sim_id].close()
+            # Mark simulation progress as complete
             prog_bars[sim_id].n = prog_bars[sim_id].total
             prog_bars[sim_id].refresh()  # Ensure it shows 100% since that's prettier
             overall_prog.update(1)
-        # elif progress == "start":
-        #     prog_bars[sim_id].start_t = time.time()
         else:
             prog_bars[sim_id].n = progress
             prog_bars[sim_id].refresh()
@@ -411,7 +465,13 @@ def cli_progbar(sim_metadatas, sim_list, prog_queue):
     overall_prog.close()
 
 def main_parallel():
-    # Parse arguments
+    """
+    Main function to run simulations in parallel across multiple traces.
+    
+    This function parses command-line arguments, sets up output directories,
+    reads trace metadata, and dispatches simulations using multiprocessing.
+    """
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Tagebuilder!")
     parser.add_argument("-s", "--spec", type=str, help="spec name")
     parser.add_argument("-l", "--sim_list", type=str, help="Path to YAML")
@@ -423,36 +483,16 @@ def main_parallel():
     #optimized = args.optimized
     print(args)
 
-    # Get the current time
+    # Prepare output directory using current timestamp
     current_time = datetime.now()
-    # Format the time as a string suitable for file names
     file_name_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-
     sim_report_root = os.path.join(settings.REPORT_DIR, f'sim_run_{file_name_time}')
     
+    # Load simulation list from the provided YAML file
     with open(sim_list_path, 'r') as file:
         sim_list_yaml = yaml.safe_load(file)
-    
     sim_list = sim_list_yaml.get('sim_list', [])
 
-    # sim_list = [
-    #     'SHORT_MOBILE-1',
-    #     'SHORT_MOBILE-2',
-    #     'SHORT_MOBILE-3',
-    #     'SHORT_MOBILE-4',
-    #     'LONG_MOBILE-1',
-    #     'LONG_MOBILE-2',
-    #     # 'LONG_MOBILE-3',
-    #     # 'LONG_MOBILE-4',
-    #     # 'SHORT_SERVER-1',
-    #     # 'SHORT_SERVER-2',
-    #     # 'SHORT_SERVER-3',
-    #     # 'SHORT_SERVER-4',
-    #     # 'LONG_SERVER-1',
-    #     # 'LONG_SERVER-2',
-    #     # 'LONG_SERVER-3',
-    #     # 'LONG_SERVER-4',
-    # ]
     subdirs = prepare_sim_folder(sim_report_root, sim_list)
     
     manager = multiprocessing.Manager()
@@ -461,7 +501,7 @@ def main_parallel():
     num_proc = os.cpu_count()
     print(f"NUM PROC {num_proc}")
 
-    # Read trace metadata for total # of br instructions
+    # Pre-read trace metadata to initialize progress bars
     trace_metadatas = []
     for trace_name in sim_list:
         trace_dir = os.path.join(settings.CBP16_TRACE_DIR, trace_name + '.bt9.trace.gz')
@@ -469,19 +509,20 @@ def main_parallel():
         reader = bt9reader.BT9Reader(trace_dir, None)
         reader.read_metadata()
         trace_metadatas.append(reader.metadata)
-    # print(trace_metadatas)
 
+    # Run simulations in parallel using multiprocessing.Pool
     with multiprocessing.Pool(processes=num_proc) as pool:
-
+        # Start a separate process to display progress bars
         progbar_proc = multiprocessing.Process(
             target=cli_progbar, args=(trace_metadatas, sim_list, progress_queue)
         )
         progbar_proc.start()
-
+        
+        # Dispatch simulations for each trace
         pool.starmap(
             run_sim_wrapper, 
             [(subdirs[sim_name], sim_name, spec, sim_id, progress_queue) for sim_id, sim_name in enumerate(sim_list)]
-            )
+        )
         
         progress_queue.put("all_done")
         progbar_proc.join()
